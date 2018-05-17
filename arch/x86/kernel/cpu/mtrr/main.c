@@ -35,7 +35,6 @@
 
 #include <linux/types.h> /* FIXME: kvm_para.h needs this */
 
-#include <linux/stop_machine.h>
 #include <linux/kvm_para.h>
 #include <linux/uaccess.h>
 #include <linux/export.h>
@@ -47,8 +46,6 @@
 #include <linux/smp.h>
 #include <linux/syscore_ops.h>
 
-#include <asm/cpufeature.h>
-#include <asm/e820/api.h>
 #include <asm/mtrr.h>
 #include <asm/msr.h>
 #include <asm/pat.h>
@@ -61,7 +58,7 @@
 u32 num_var_ranges;
 static bool __mtrr_enabled;
 
-static bool mtrr_enabled(void)
+bool mtrr_enabled(void)
 {
 	return __mtrr_enabled;
 }
@@ -70,14 +67,10 @@ unsigned int mtrr_usage_table[MTRR_MAX_VAR_RANGES];
 static DEFINE_MUTEX(mtrr_mutex);
 
 u64 size_or_mask, size_and_mask;
-static bool mtrr_aps_delayed_init;
 
 static const struct mtrr_ops *mtrr_ops[X86_VENDOR_NUM] __ro_after_init;
 
 const struct mtrr_ops *mtrr_if;
-
-static void set_mtrr(unsigned int reg, unsigned long base,
-		     unsigned long size, mtrr_type type);
 
 void __init set_mtrr_ops(const struct mtrr_ops *ops)
 {
@@ -143,123 +136,12 @@ static void __init init_table(void)
 		mtrr_usage_table[i] = 1;
 }
 
-struct set_mtrr_data {
-	unsigned long	smp_base;
-	unsigned long	smp_size;
-	unsigned int	smp_reg;
-	mtrr_type	smp_type;
-};
-
-/**
- * mtrr_rendezvous_handler - Work done in the synchronization handler. Executed
- * by all the CPUs.
- * @info: pointer to mtrr configuration data
- *
- * Returns nothing.
- */
-static int mtrr_rendezvous_handler(void *info)
-{
-	struct set_mtrr_data *data = info;
-
-	/*
-	 * We use this same function to initialize the mtrrs during boot,
-	 * resume, runtime cpu online and on an explicit request to set a
-	 * specific MTRR.
-	 *
-	 * During boot or suspend, the state of the boot cpu's mtrrs has been
-	 * saved, and we want to replicate that across all the cpus that come
-	 * online (either at the end of boot or resume or during a runtime cpu
-	 * online). If we're doing that, @reg is set to something special and on
-	 * all the cpu's we do mtrr_if->set_all() (On the logical cpu that
-	 * started the boot/resume sequence, this might be a duplicate
-	 * set_all()).
-	 */
-	if (data->smp_reg != ~0U) {
-		mtrr_if->set(data->smp_reg, data->smp_base,
-			     data->smp_size, data->smp_type);
-	} else if (mtrr_aps_delayed_init || !cpu_online(smp_processor_id())) {
-		mtrr_if->set_all();
-	}
-	return 0;
-}
-
 static inline int types_compatible(mtrr_type type1, mtrr_type type2)
 {
 	return type1 == MTRR_TYPE_UNCACHABLE ||
 	       type2 == MTRR_TYPE_UNCACHABLE ||
 	       (type1 == MTRR_TYPE_WRTHROUGH && type2 == MTRR_TYPE_WRBACK) ||
 	       (type1 == MTRR_TYPE_WRBACK && type2 == MTRR_TYPE_WRTHROUGH);
-}
-
-/**
- * set_mtrr - update mtrrs on all processors
- * @reg:	mtrr in question
- * @base:	mtrr base
- * @size:	mtrr size
- * @type:	mtrr type
- *
- * This is kinda tricky, but fortunately, Intel spelled it out for us cleanly:
- *
- * 1. Queue work to do the following on all processors:
- * 2. Disable Interrupts
- * 3. Wait for all procs to do so
- * 4. Enter no-fill cache mode
- * 5. Flush caches
- * 6. Clear PGE bit
- * 7. Flush all TLBs
- * 8. Disable all range registers
- * 9. Update the MTRRs
- * 10. Enable all range registers
- * 11. Flush all TLBs and caches again
- * 12. Enter normal cache mode and reenable caching
- * 13. Set PGE
- * 14. Wait for buddies to catch up
- * 15. Enable interrupts.
- *
- * What does that mean for us? Well, stop_machine() will ensure that
- * the rendezvous handler is started on each CPU. And in lockstep they
- * do the state transition of disabling interrupts, updating MTRR's
- * (the CPU vendors may each do it differently, so we call mtrr_if->set()
- * callback and let them take care of it.) and enabling interrupts.
- *
- * Note that the mechanism is the same for UP systems, too; all the SMP stuff
- * becomes nops.
- */
-static void
-set_mtrr(unsigned int reg, unsigned long base, unsigned long size, mtrr_type type)
-{
-	struct set_mtrr_data data = { .smp_reg = reg,
-				      .smp_base = base,
-				      .smp_size = size,
-				      .smp_type = type
-				    };
-
-	stop_machine(mtrr_rendezvous_handler, &data, cpu_online_mask);
-}
-
-static void set_mtrr_cpuslocked(unsigned int reg, unsigned long base,
-				unsigned long size, mtrr_type type)
-{
-	struct set_mtrr_data data = { .smp_reg = reg,
-				      .smp_base = base,
-				      .smp_size = size,
-				      .smp_type = type
-				    };
-
-	stop_machine_cpuslocked(mtrr_rendezvous_handler, &data, cpu_online_mask);
-}
-
-static void set_mtrr_from_inactive_cpu(unsigned int reg, unsigned long base,
-				      unsigned long size, mtrr_type type)
-{
-	struct set_mtrr_data data = { .smp_reg = reg,
-				      .smp_base = base,
-				      .smp_size = size,
-				      .smp_type = type
-				    };
-
-	stop_machine_from_inactive_cpu(mtrr_rendezvous_handler, &data,
-				       cpu_callout_mask);
 }
 
 /**
@@ -765,7 +647,7 @@ void __init mtrr_bp_init(void)
 			__mtrr_enabled = get_mtrr_state();
 
 			if (mtrr_enabled())
-				mtrr_bp_pat_init();
+				pat_bp_init();
 
 			if (mtrr_cleanup(phys_addr)) {
 				changed_by_mtrr_cleanup = 1;
@@ -776,37 +658,8 @@ void __init mtrr_bp_init(void)
 
 	if (!mtrr_enabled()) {
 		pr_info("MTRR: Disabled\n");
-
-		/*
-		 * PAT initialization relies on MTRR's rendezvous handler.
-		 * Skip PAT init until the handler can initialize both
-		 * features independently.
-		 */
-		pat_disable("MTRRs disabled, skipping PAT initialization too.");
+		pat_bp_init();
 	}
-}
-
-void mtrr_ap_init(void)
-{
-	if (!mtrr_enabled())
-		return;
-
-	if (!use_intel() || mtrr_aps_delayed_init)
-		return;
-	/*
-	 * Ideally we should hold mtrr_mutex here to avoid mtrr entries
-	 * changed, but this routine will be called in cpu boot time,
-	 * holding the lock breaks it.
-	 *
-	 * This routine is called in two cases:
-	 *
-	 *   1. very earily time of software resume, when there absolutely
-	 *      isn't mtrr entry changes;
-	 *
-	 *   2. cpu hotadd time. We let mtrr_add/del_page hold cpuhotplug
-	 *      lock to prevent mtrr entry changes
-	 */
-	set_mtrr_from_inactive_cpu(~0U, 0, 0, 0);
 }
 
 /**
@@ -821,44 +674,6 @@ void mtrr_save_state(void)
 
 	first_cpu = cpumask_first(cpu_online_mask);
 	smp_call_function_single(first_cpu, mtrr_save_fixed_ranges, NULL, 1);
-}
-
-void set_mtrr_aps_delayed_init(void)
-{
-	if (!mtrr_enabled())
-		return;
-	if (!use_intel())
-		return;
-
-	mtrr_aps_delayed_init = true;
-}
-
-/*
- * Delayed MTRR initialization for all AP's
- */
-void mtrr_aps_init(void)
-{
-	if (!use_intel() || !mtrr_enabled())
-		return;
-
-	/*
-	 * Check if someone has requested the delay of AP MTRR initialization,
-	 * by doing set_mtrr_aps_delayed_init(), prior to this point. If not,
-	 * then we are done.
-	 */
-	if (!mtrr_aps_delayed_init)
-		return;
-
-	set_mtrr(~0U, 0, 0, 0);
-	mtrr_aps_delayed_init = false;
-}
-
-void mtrr_bp_restore(void)
-{
-	if (!use_intel() || !mtrr_enabled())
-		return;
-
-	mtrr_if->set_all();
 }
 
 static int __init mtrr_init_finialize(void)

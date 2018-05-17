@@ -1829,7 +1829,6 @@ config MTRR_SANITIZER_SPARE_REG_NR_DEFAULT
 config X86_PAT
 	def_bool y
 	prompt "x86 PAT support" if EXPERT
-	depends on MTRR
 	---help---
 	  Use PAT attributes to setup page level cache control.
 
@@ -1840,6 +1839,19 @@ config X86_PAT
 	  spontaneous reboots) or a non-working video driver.
 
 	  If unsure, say Y.
+
+config X86_PAT_WITHOUT_MTRR
+	def_bool n
+	prompt "enable x86 PAT even without MTRR by default" if EXPERT
+	depends on X86_PAT
+	---help---
+	  Use PAT attributes even when MTRR is disabled by default.
+	  In some (virtual) platform, PAT is supported without MTRR.
+	  Choose 'y' for such platforms.
+	  Pass 'pat_without_mtrr' or 'no_pat_without_mtrr' on the
+	  kernel command line to override the default.
+
+	  If unsure, say N.
 
 config ARCH_USES_PG_UNCACHED
 	def_bool y

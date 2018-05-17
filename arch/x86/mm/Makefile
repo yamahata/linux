@@ -24,6 +24,9 @@ CFLAGS_mem_encrypt_identity.o	:= $(nostackp)
 CFLAGS_fault.o := -I$(src)/../include/asm/trace
 
 obj-$(CONFIG_X86_PAT)		+= pat_rbtree.o
+ifndef CONFIG_MTRR
+obj-$(CONFIG_X86_PAT)		+= ../kernel/cpu/mtrr/rendezvous.o
+endif
 
 obj-$(CONFIG_X86_32)		+= pgtable_32.o iomap_32.o
 

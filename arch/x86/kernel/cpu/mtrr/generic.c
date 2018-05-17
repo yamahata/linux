@@ -5,13 +5,8 @@
 #define DEBUG
 
 #include <linux/export.h>
-#include <linux/init.h>
-#include <linux/io.h>
 #include <linux/mm.h>
 
-#include <asm/processor-flags.h>
-#include <asm/cpufeature.h>
-#include <asm/tlbflush.h>
 #include <asm/mtrr.h>
 #include <asm/msr.h>
 #include <asm/pat.h>
@@ -396,9 +391,6 @@ print_fixed(unsigned base, unsigned step, const mtrr_type *types)
 	}
 }
 
-static void prepare_set(void);
-static void post_set(void);
-
 static void __init print_mtrr_state(void)
 {
 	unsigned int i;
@@ -442,20 +434,6 @@ static void __init print_mtrr_state(void)
 	}
 	if (mtrr_tom2)
 		pr_debug("TOM2: %016llx aka %lldM\n", mtrr_tom2, mtrr_tom2>>20);
-}
-
-/* PAT setup for BP. We need to go through sync steps here */
-void __init mtrr_bp_pat_init(void)
-{
-	unsigned long flags;
-
-	local_irq_save(flags);
-	prepare_set();
-
-	pat_init();
-
-	post_set();
-	local_irq_restore(flags);
 }
 
 /* Grab all of the MTRR state for this CPU into *state */
@@ -679,8 +657,6 @@ static bool set_mtrr_var_ranges(unsigned int index, struct mtrr_var_range *vr)
 	return changed;
 }
 
-static u32 deftype_lo, deftype_hi;
-
 /**
  * set_mtrr_state - Set the MTRR state for this CPU.
  *
@@ -704,10 +680,11 @@ static unsigned long set_mtrr_state(void)
 	 * Set_mtrr_restore restores the old value of MTRRdefType,
 	 * so to set it we fiddle with the saved value:
 	 */
-	if ((deftype_lo & 0xff) != mtrr_state.def_type
-	    || ((deftype_lo & 0xc00) >> 10) != mtrr_state.enabled) {
+	if ((mtrr_deftype_lo & 0xff) != mtrr_state.def_type
+	    || ((mtrr_deftype_lo & 0xc00) >> 10) != mtrr_state.enabled) {
 
-		deftype_lo = (deftype_lo & ~0xcff) | mtrr_state.def_type |
+		mtrr_deftype_lo = (mtrr_deftype_lo & ~0xcff) |
+                             mtrr_state.def_type |
 			     (mtrr_state.enabled << 10);
 		change_mask |= MTRR_CHANGE_MASK_DEFTYPE;
 	}
@@ -716,77 +693,13 @@ static unsigned long set_mtrr_state(void)
 }
 
 
-static unsigned long cr4;
-static DEFINE_RAW_SPINLOCK(set_atomicity_lock);
-
-/*
- * Since we are disabling the cache don't allow any interrupts,
- * they would run extremely slow and would only increase the pain.
- *
- * The caller must ensure that local interrupts are disabled and
- * are reenabled after post_set() has been called.
- */
-static void prepare_set(void) __acquires(set_atomicity_lock)
-{
-	unsigned long cr0;
-
-	/*
-	 * Note that this is not ideal
-	 * since the cache is only flushed/disabled for this CPU while the
-	 * MTRRs are changed, but changing this requires more invasive
-	 * changes to the way the kernel boots
-	 */
-
-	raw_spin_lock(&set_atomicity_lock);
-
-	/* Enter the no-fill (CD=1, NW=0) cache mode and flush caches. */
-	cr0 = read_cr0() | X86_CR0_CD;
-	write_cr0(cr0);
-	wbinvd();
-
-	/* Save value of CR4 and clear Page Global Enable (bit 7) */
-	if (boot_cpu_has(X86_FEATURE_PGE)) {
-		cr4 = __read_cr4();
-		__write_cr4(cr4 & ~X86_CR4_PGE);
-	}
-
-	/* Flush all TLBs via a mov %cr3, %reg; mov %reg, %cr3 */
-	count_vm_tlb_event(NR_TLB_LOCAL_FLUSH_ALL);
-	__flush_tlb();
-
-	/* Save MTRR state */
-	rdmsr(MSR_MTRRdefType, deftype_lo, deftype_hi);
-
-	/* Disable MTRRs, and set the default type to uncached */
-	mtrr_wrmsr(MSR_MTRRdefType, deftype_lo & ~0xcff, deftype_hi);
-	wbinvd();
-}
-
-static void post_set(void) __releases(set_atomicity_lock)
-{
-	/* Flush TLBs (no need to flush caches - they are disabled) */
-	count_vm_tlb_event(NR_TLB_LOCAL_FLUSH_ALL);
-	__flush_tlb();
-
-	/* Intel (P6) standard MTRRs */
-	mtrr_wrmsr(MSR_MTRRdefType, deftype_lo, deftype_hi);
-
-	/* Enable caches */
-	write_cr0(read_cr0() & ~X86_CR0_CD);
-
-	/* Restore value of CR4 */
-	if (boot_cpu_has(X86_FEATURE_PGE))
-		__write_cr4(cr4);
-	raw_spin_unlock(&set_atomicity_lock);
-}
-
 static void generic_set_all(void)
 {
 	unsigned long mask, count;
 	unsigned long flags;
 
 	local_irq_save(flags);
-	prepare_set();
+	mtrr_pat_prepare_set();
 
 	/* Actually set the state */
 	mask = set_mtrr_state();
@@ -794,7 +707,7 @@ static void generic_set_all(void)
 	/* also set PAT */
 	pat_init();
 
-	post_set();
+	mtrr_pat_post_set();
 	local_irq_restore(flags);
 
 	/* Use the atomic bitops to update the global mask */
@@ -825,7 +738,7 @@ static void generic_set_mtrr(unsigned int reg, unsigned long base,
 	vr = &mtrr_state.var_ranges[reg];
 
 	local_irq_save(flags);
-	prepare_set();
+	mtrr_pat_prepare_set();
 
 	if (size == 0) {
 		/*
@@ -844,7 +757,7 @@ static void generic_set_mtrr(unsigned int reg, unsigned long base,
 		mtrr_wrmsr(MTRRphysMask_MSR(reg), vr->mask_lo, vr->mask_hi);
 	}
 
-	post_set();
+	mtrr_pat_post_set();
 	local_irq_restore(flags);
 }
 

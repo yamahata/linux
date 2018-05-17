@@ -63,6 +63,9 @@ static int __init nopat(char *str)
 }
 early_param("nopat", nopat);
 
+early_param_on_off("pat_without_mtrr", "no_pat_without_mtrr", pat_without_mtrr,
+		   CONFIG_X86_PAT_WITHOUT_MTRR);
+
 bool pat_enabled(void)
 {
 	return pat_initialized;
@@ -373,7 +376,35 @@ void pat_init(void)
 
 #undef PAT
 
+void pat_set(void)
+{
+	unsigned long flags;
+
+	local_irq_save(flags);
+	mtrr_pat_prepare_set();
+
+	pat_init();
+
+	mtrr_pat_post_set();
+	local_irq_restore(flags);
+}
+
+/* PAT setup for BP. We need to go through sync steps here */
+void __init pat_bp_init(void)
+{
+	if (!mtrr_enabled() && !pat_without_mtrr) {
+		pat_disable(
+			"MTRRs disabled, "
+			"skipping PAT initialization too.");
+		return;
+	}
+	pat_set();
+}
+
 static DEFINE_SPINLOCK(memtype_lock);	/* protects memtype accesses */
+
+static int pat_pagerange_is_ram(resource_size_t start, resource_size_t end);
+static int pat_pagerange_is_acpi(resource_size_t start, resource_size_t end);
 
 /*
  * Does intersection of PAT memory type and MTRR memory type and returns
@@ -390,13 +421,27 @@ static unsigned long pat_x_mtrr_type(u64 start, u64 end,
 	 * request is for WB.
 	 */
 	if (req_type == _PAGE_CACHE_MODE_WB) {
-		u8 mtrr_type, uniform;
+		if (mtrr_enabled()) {
+			u8 mtrr_type, uniform;
 
-		mtrr_type = mtrr_type_lookup(start, end, &uniform);
-		if (mtrr_type != MTRR_TYPE_WRBACK)
-			return _PAGE_CACHE_MODE_UC_MINUS;
+			mtrr_type = mtrr_type_lookup(start, end, &uniform);
+			if (mtrr_type != MTRR_TYPE_WRBACK)
+				return _PAGE_CACHE_MODE_UC_MINUS;
 
-		return _PAGE_CACHE_MODE_WB;
+			return _PAGE_CACHE_MODE_WB;
+		}
+
+		/*
+		 * ACPI subsystem tries to map non-ram area as writeback.
+		 * If it's not ram, use uc minus similarly to mtrr case.
+		 */
+		if (pat_pagerange_is_ram(start, end) == 1)
+			return _PAGE_CACHE_MODE_WB;
+		/* allow writeback for ACPI tables/ACPI NVS */
+		if (pat_pagerange_is_acpi(start, end) == 1)
+			return _PAGE_CACHE_MODE_WB;
+
+		return _PAGE_CACHE_MODE_UC_MINUS;
 	}
 
 	return req_type;
@@ -443,6 +488,35 @@ static int pat_pagerange_is_ram(resource_size_t start, resource_size_t end)
 	}
 
 	return (ret > 0) ? -1 : (state.ram ? 1 : 0);
+}
+
+static int pagerange_is_acpi_desc_callback(struct resource *res, void *arg)
+{
+	unsigned long initial_pfn = res->start >> PAGE_SHIFT;
+	unsigned long end_pfn = (res->end + 1) >> PAGE_SHIFT;
+	unsigned long total_nr_pages = end_pfn - initial_pfn;
+
+	return pagerange_is_ram_callback(initial_pfn, total_nr_pages, arg);
+}
+
+static int pagerange_is_acpi_desc(unsigned long desc,
+				  resource_size_t start, resource_size_t end)
+{
+	int ret = 0;
+	unsigned long start_pfn = start >> PAGE_SHIFT;
+	struct pagerange_state state = {start_pfn, 0, 0};
+
+	ret = walk_iomem_res_desc(desc, IORESOURCE_MEM | IORESOURCE_BUSY,
+		start, end, &state, pagerange_is_acpi_desc_callback);
+	return (ret > 0) ? -1 : (state.ram ? 1 : 0);
+}
+
+static int pat_pagerange_is_acpi(resource_size_t start, resource_size_t end)
+{
+	int ret = pagerange_is_acpi_desc(IORES_DESC_ACPI_TABLES, start, end);
+	if (ret == 1)
+		return ret;
+	return pagerange_is_acpi_desc(IORES_DESC_ACPI_NV_STORAGE, start, end);
 }
 
 /*
@@ -537,8 +611,9 @@ int reserve_memtype(u64 start, u64 end, enum page_cache_mode req_type,
 
 	if (!pat_enabled()) {
 		/* This is identical to page table setting without PAT */
-		if (new_type)
-			*new_type = req_type;
+		if (new_type) {
+			*new_type = pat_x_mtrr_type(start, end, req_type);;
+		}
 		return 0;
 	}
 
@@ -554,6 +629,8 @@ int reserve_memtype(u64 start, u64 end, enum page_cache_mode req_type,
 	 * optimization for /dev/mem mmap'ers into WB memory (BIOS
 	 * tools and ACPI tools). Use WB request for WB memory and use
 	 * UC_MINUS otherwise.
+	 * When mtrr is disabled, check iomem resource which is derived
+	 * from e820.
 	 */
 	actual_type = pat_x_mtrr_type(start, end, req_type);
 
