@@ -413,6 +413,22 @@ static int pat_pagerange_is_acpi(resource_size_t start, resource_size_t end);
  * The intersection is based on "Effective Memory Type" tables in IA-32
  * SDM vol 3a
  */
+static unsigned long system_memory_type(u64 start, u64 end,
+					enum page_cache_mode req_type)
+{
+	/*
+	 * ACPI subsystem tries to map non-ram area as writeback.
+	 * If it's not ram, use uc minus similarly to mtrr case.
+	 */
+	if (pat_pagerange_is_ram(start, end) == 1)
+		return _PAGE_CACHE_MODE_WB;
+	/* allow writeback for ACPI tables/ACPI NVS */
+	if (pat_pagerange_is_acpi(start, end) == 1)
+		return _PAGE_CACHE_MODE_WB;
+
+	return _PAGE_CACHE_MODE_UC_MINUS;
+}
+
 static unsigned long pat_x_mtrr_type(u64 start, u64 end,
 				     enum page_cache_mode req_type)
 {
@@ -425,23 +441,20 @@ static unsigned long pat_x_mtrr_type(u64 start, u64 end,
 			u8 mtrr_type, uniform;
 
 			mtrr_type = mtrr_type_lookup(start, end, &uniform);
+			if (mtrr_type == MTRR_TYPE_INVALID) {
+				dprintk("MTRR doesn't cover memtype "
+					"[mem %#010Lx-%#010Lx], req %s\n",
+					start, end - 1, cattr_name(req_type));
+				/* MTRR doesn't cover this range. */
+				return system_memory_type(
+					start, end, req_type);
+			}
 			if (mtrr_type != MTRR_TYPE_WRBACK)
 				return _PAGE_CACHE_MODE_UC_MINUS;
 
 			return _PAGE_CACHE_MODE_WB;
 		}
-
-		/*
-		 * ACPI subsystem tries to map non-ram area as writeback.
-		 * If it's not ram, use uc minus similarly to mtrr case.
-		 */
-		if (pat_pagerange_is_ram(start, end) == 1)
-			return _PAGE_CACHE_MODE_WB;
-		/* allow writeback for ACPI tables/ACPI NVS */
-		if (pat_pagerange_is_acpi(start, end) == 1)
-			return _PAGE_CACHE_MODE_WB;
-
-		return _PAGE_CACHE_MODE_UC_MINUS;
+		return system_memory_type(start, end, req_type);
 	}
 
 	return req_type;
@@ -611,9 +624,11 @@ int reserve_memtype(u64 start, u64 end, enum page_cache_mode req_type,
 
 	if (!pat_enabled()) {
 		/* This is identical to page table setting without PAT */
-		if (new_type) {
-			*new_type = pat_x_mtrr_type(start, end, req_type);;
-		}
+		if (new_type)
+			*new_type = pat_x_mtrr_type(start, end, req_type);
+		dprintk("reserve_memtype added [mem %#010Lx-%#010Lx], req %s, ret %s\n",
+		start, end - 1, cattr_name(req_type),
+		new_type ? cattr_name(*new_type) : "-");
 		return 0;
 	}
 
