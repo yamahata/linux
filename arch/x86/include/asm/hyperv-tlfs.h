@@ -125,6 +125,7 @@
  * registers is available
  */
 #define HV_X64_HYPERCALL_PARAMS_XMM_AVAILABLE		(1 << 4)
+#define HV_X64_HYPERCALL_OUTPUT_XMM_AVAILABLE		(1 << 15)
 /* Support for a virtual guest idle state is available */
 #define HV_X64_GUEST_IDLE_STATE_AVAILABLE		(1 << 5)
 /* Guest crash data handler available */
@@ -388,10 +389,12 @@ enum HV_GENERIC_SET_FORMAT {
 #define HV_HYPERCALL_RESULT_MASK	GENMASK_ULL(15, 0)
 #define HV_HYPERCALL_FAST_BIT		BIT(16)
 #define HV_HYPERCALL_VARHEAD_OFFSET	17
+#define HV_HYPERCALL_VARHEAD_MASK	GENMASK_ULL(26, 17)
 #define HV_HYPERCALL_REP_COMP_OFFSET	32
 #define HV_HYPERCALL_REP_COMP_MASK	GENMASK_ULL(43, 32)
 #define HV_HYPERCALL_REP_START_OFFSET	48
 #define HV_HYPERCALL_REP_START_MASK	GENMASK_ULL(59, 48)
+#define HV_XMM_BYTE_MAX			112
 
 /* hypercall status code */
 #define HV_STATUS_SUCCESS			0

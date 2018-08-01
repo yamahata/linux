@@ -461,7 +461,7 @@ struct hv_pcibus_device {
 	struct irq_domain *irq_domain;
 
 	/* hypercall arg, must not cross page boundary */
-	struct retarget_msi_interrupt retarget_msi_interrupt_params;
+	__attribute__((__aligned__(16))) struct retarget_msi_interrupt retarget_msi_interrupt_params;
 
 	spinlock_t retarget_msi_interrupt_lock;
 
@@ -984,8 +984,9 @@ static void hv_irq_unmask(struct irq_data *data)
 		}
 	}
 
-	res = hv_do_hypercall(HVCALL_RETARGET_INTERRUPT | (var_size << 17),
-			      params, NULL);
+	res = hv_do_hypercall(
+		HVCALL_RETARGET_INTERRUPT | (var_size << 17),
+		params, sizeof(*params) + var_size * 8, NULL, 0);
 
 exit_unlock:
 	spin_unlock_irqrestore(&hbus->retarget_msi_interrupt_lock, flags);
