@@ -134,11 +134,11 @@ static void hyperv_flush_tlb_others(const struct cpumask *cpus,
 	if (info->end == TLB_FLUSH_ALL) {
 		flush->flags |= HV_FLUSH_NON_GLOBAL_MAPPINGS_ONLY;
 		status = hv_do_hypercall(HVCALL_FLUSH_VIRTUAL_ADDRESS_SPACE,
-					 flush, NULL);
+					 flush, sizeof(*flush), NULL, 0);
 	} else if (info->end &&
 		   ((info->end - info->start)/HV_TLB_FLUSH_UNIT) > max_gvas) {
 		status = hv_do_hypercall(HVCALL_FLUSH_VIRTUAL_ADDRESS_SPACE,
-					 flush, NULL);
+					 flush, sizeof(*flush), NULL, 0);
 	} else {
 		gva_n = fill_gva_list(flush->gva_list, 0,
 				      info->start, info->end);

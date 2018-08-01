@@ -43,7 +43,7 @@ int hyperv_flush_guest_mapping(u64 as)
 	flush->flags = 0;
 
 	status = hv_do_hypercall(HVCALL_FLUSH_GUEST_PHYSICAL_ADDRESS_SPACE,
-				 flush, NULL);
+				 flush, sizeof(*flush), NULL, 0);
 	local_irq_restore(flags);
 
 	if (!(status & HV_HYPERCALL_RESULT_MASK))
