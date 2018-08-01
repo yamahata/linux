@@ -125,16 +125,13 @@ extern struct clocksource *hyperv_cs;
 extern void *hv_hypercall_pg;
 extern void  __percpu  **hyperv_pcpu_input_arg;
 
-static inline u64 hv_do_hypercall(u64 control, void *input, void *output)
+static inline u64 __hv_do_hypercall(u64 control, void *input, void *output)
 {
 	u64 input_address = input ? virt_to_phys(input) : 0;
 	u64 output_address = output ? virt_to_phys(output) : 0;
 	u64 hv_status;
 
 #ifdef CONFIG_X86_64
-	if (!hv_hypercall_pg)
-		return U64_MAX;
-
 	__asm__ __volatile__("mov %4, %%r8\n"
 			     CALL_NOSPEC
 			     : "=a" (hv_status), ASM_CALL_CONSTRAINT,
@@ -147,9 +144,6 @@ static inline u64 hv_do_hypercall(u64 control, void *input, void *output)
 	u32 input_address_lo = lower_32_bits(input_address);
 	u32 output_address_hi = upper_32_bits(output_address);
 	u32 output_address_lo = lower_32_bits(output_address);
-
-	if (!hv_hypercall_pg)
-		return U64_MAX;
 
 	__asm__ __volatile__(CALL_NOSPEC
 			     : "=A" (hv_status),
@@ -239,11 +233,14 @@ static inline u64 hv_do_rep_hypercall(u16 code, u16 rep_count, u16 varhead_size,
 	u64 status;
 	u16 rep_comp;
 
+	if (unlikely(!hv_hypercall_pg))
+		return U64_MAX;
+
 	control |= (u64)varhead_size << HV_HYPERCALL_VARHEAD_OFFSET;
 	control |= (u64)rep_count << HV_HYPERCALL_REP_COMP_OFFSET;
 
 	do {
-		status = hv_do_hypercall(control, input, output);
+		status = __hv_do_hypercall(control, input, output);
 		if ((status & HV_HYPERCALL_RESULT_MASK) != HV_STATUS_SUCCESS)
 			return status;
 
@@ -258,6 +255,167 @@ static inline u64 hv_do_rep_hypercall(u16 code, u16 rep_count, u16 varhead_size,
 	} while (rep_comp < rep_count);
 
 	return status;
+}
+
+/* ibytes = fixed header size + var header size + data size in bytes */
+static inline u64 hv_do_xmm_fast_hypercall(
+	u32 varhead_code, void *input, size_t ibytes,
+	void *output, size_t obytes)
+{
+	u64 control = (u64)varhead_code | HV_HYPERCALL_FAST_BIT;
+	u64 hv_status;
+	u64 input1;
+	u64 input2;
+	size_t i_end = roundup(ibytes, 16);
+	size_t o_end = i_end + roundup(obytes, 16);
+	u64 *ixmm = (u64 *)input + 2;
+	u64 tmp[(o_end - 16) / 8] __aligned((16));
+
+	BUG_ON(i_end <= 16);
+	BUG_ON(o_end > HV_XMM_BYTE_MAX);
+	BUG_ON(!IS_ALIGNED((unsigned long)input, 16));
+	BUG_ON(!IS_ALIGNED((unsigned long)output, 16));
+
+	/* it's assumed that there are at least two inputs */
+	input1 = ((u64 *)input)[0];
+	input2 = ((u64 *)input)[1];
+
+	preempt_disable();
+	if (o_end > 2 * 8)
+		__asm__ __volatile__("movdqa %%xmm0, %0" : : "m" (tmp[0]));
+	if (o_end > 4 * 8)
+		__asm__ __volatile__("movdqa %%xmm1, %0" : : "m" (tmp[2]));
+	if (o_end > 6 * 8)
+		__asm__ __volatile__("movdqa %%xmm2, %0" : : "m" (tmp[4]));
+	if (o_end > 8 * 8)
+		__asm__ __volatile__("movdqa %%xmm3, %0" : : "m" (tmp[6]));
+	if (o_end > 10 * 8)
+		__asm__ __volatile__("movdqa %%xmm4, %0" : : "m" (tmp[8]));
+	if (o_end > 12 * 8)
+		__asm__ __volatile__("movdqa %%xmm5, %0" : : "m" (tmp[10]));
+	if (ibytes > 2 * 8)
+		__asm__ __volatile__("movdqa %0, %%xmm0" : : "m" (ixmm[0]));
+	if (ibytes > 4 * 8)
+		__asm__ __volatile__("movdqa %0, %%xmm1" : : "m" (ixmm[2]));
+	if (ibytes > 6 * 8)
+		__asm__ __volatile__("movdqa %0, %%xmm2" : : "m" (ixmm[4]));
+	if (ibytes > 8 * 8)
+		__asm__ __volatile__("movdqa %0, %%xmm3" : : "m" (ixmm[6]));
+	if (ibytes > 10 * 8)
+		__asm__ __volatile__("movdqa %0, %%xmm4" : : "m" (ixmm[8]));
+	if (ibytes > 12 * 8)
+		__asm__ __volatile__("movdqa %0, %%xmm5" : : "m" (ixmm[10]));
+
+#ifdef CONFIG_X86_64
+	__asm__ __volatile__("mov %4, %%r8\n"
+			     CALL_NOSPEC
+			     : "=a" (hv_status), ASM_CALL_CONSTRAINT,
+			       "+c" (control), "+d" (input1)
+			     : "r" (input2),
+			       THUNK_TARGET(hv_hypercall_pg)
+			     : "cc", "memory", "r8", "r9", "r10", "r11");
+#else
+	{
+		u32 input1_hi = upper_32_bits(input1);
+		u32 input1_lo = lower_32_bits(input1);
+		u32 input2_hi = upper_32_bits(input2);
+		u32 input2_lo = lower_32_bits(input2);
+
+		__asm__ __volatile__ (CALL_NOSPEC
+				      : "=A"(hv_status),
+					"+c"(input1_lo), ASM_CALL_CONSTRAINT
+				      :	"A" (control), "b" (input1_hi),
+					"D"(input2_hi), "S"(input2_lo),
+					THUNK_TARGET(hv_hypercall_pg)
+				      : "cc", "memory");
+	}
+#endif
+	if (output) {
+		u64 *oxmm = (u64 *)output;
+		if (i_end <= 2 * 8 && 2 * 8 < o_end) {
+			__asm__ __volatile__(
+				"movdqa %%xmm0, %0" : "=m" (oxmm[0]));
+			oxmm += 2;
+		}
+		if (i_end <= 4 * 8 && 4 * 8 < o_end) {
+			__asm__ __volatile__(
+				"movdqa %%xmm1, %0" : "=m" (oxmm[0]));
+			oxmm += 2;
+		}
+		if (i_end <= 6 * 8 && 6 * 8 < o_end) {
+			__asm__ __volatile__(
+				"movdqa %%xmm2, %0" : "=m" (oxmm[0]));
+			oxmm += 2;
+		}
+		if (i_end <= 8 * 8 && 8 * 8 < o_end) {
+			__asm__ __volatile__(
+				"movdqa %%xmm3, %0" : "=m" (oxmm[0]));
+			oxmm += 2;
+		}
+		if (i_end <= 10 * 8 && 10 * 8 < o_end) {
+			__asm__ __volatile__(
+				"movdqa %%xmm4, %0" : "=m" (oxmm[0]));
+			oxmm += 2;
+		}
+		if (i_end <= 12 * 8 && 12 * 8 < o_end) {
+			__asm__ __volatile__(
+				"movdqa %%xmm5, %0" : "=m" (oxmm[0]));
+			oxmm += 2;
+		}
+	}
+	if (o_end > 2 * 8)
+		__asm__ __volatile__("movdqa %0, %%xmm0" : : "m" (tmp[0]));
+	if (o_end > 4 * 8)
+		__asm__ __volatile__("movdqa %0, %%xmm1" : : "m" (tmp[2]));
+	if (o_end > 6 * 8)
+		__asm__ __volatile__("movdqa %0, %%xmm2" : : "m" (tmp[4]));
+	if (o_end > 8 * 8)
+		__asm__ __volatile__("movdqa %0, %%xmm3" : : "m" (tmp[6]));
+	if (o_end > 10 * 8)
+		__asm__ __volatile__("movdqa %0, %%xmm4" : : "m" (tmp[8]));
+	if (o_end > 12 * 8)
+		__asm__ __volatile__("movdqa %0, %%xmm5" : : "m" (tmp[10]));
+	preempt_enable();
+
+	return hv_status;
+}
+
+static inline u64 hv_do_hypercall(
+	u32 varhead_code,
+	void *input, size_t ibytes, void *output, size_t obytes)
+{
+	if (unlikely(!hv_hypercall_pg))
+		return U64_MAX;
+
+	/* fast hypercall */
+	if (output == NULL && ibytes <= 16) {
+		u64 *i = (u64*)input;
+
+		WARN_ON((varhead_code & HV_HYPERCALL_VARHEAD_MASK) != 0);
+		if (ibytes <= 8)
+			return hv_do_fast_hypercall8((u16)varhead_code, i[0]);
+
+		return hv_do_fast_hypercall16((u16)varhead_code, i[0], i[1]);
+	}
+
+	/* xmm fast hypercall */
+	if (static_cpu_has(X86_FEATURE_XMM) &&
+	    ms_hyperv.features & HV_X64_HYPERCALL_PARAMS_XMM_AVAILABLE &&
+	    roundup(ibytes, 16) + obytes <= HV_XMM_BYTE_MAX) {
+		if (output) {
+			if (ms_hyperv.features &
+			    HV_X64_HYPERCALL_OUTPUT_XMM_AVAILABLE)
+				return hv_do_xmm_fast_hypercall(
+					varhead_code, input, ibytes,
+					output, obytes);
+		} else {
+			WARN_ON(obytes > 0);
+			return hv_do_xmm_fast_hypercall(
+				varhead_code, input, ibytes, NULL, 0);
+		}
+	}
+
+	return __hv_do_hypercall((u64)varhead_code, input, output);
 }
 
 /*
