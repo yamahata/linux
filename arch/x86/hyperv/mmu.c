@@ -202,14 +202,16 @@ static void hyperv_flush_tlb_others_ex(const struct cpumask *cpus,
 
 	if (info->end == TLB_FLUSH_ALL) {
 		flush->flags |= HV_FLUSH_NON_GLOBAL_MAPPINGS_ONLY;
-		status = hv_do_rep_hypercall(
-			HVCALL_FLUSH_VIRTUAL_ADDRESS_SPACE_EX,
-			0, nr_bank, flush, NULL);
+		status = hv_do_hypercall(
+			HVCALL_FLUSH_VIRTUAL_ADDRESS_SPACE_EX |
+			(nr_bank << HV_HYPERCALL_VARHEAD_OFFSET),
+			flush, sizeof(*flush) + nr_bank * 8, NULL, 0);
 	} else if (info->end &&
 		   ((info->end - info->start)/HV_TLB_FLUSH_UNIT) > max_gvas) {
-		status = hv_do_rep_hypercall(
-			HVCALL_FLUSH_VIRTUAL_ADDRESS_SPACE_EX,
-			0, nr_bank, flush, NULL);
+		status = hv_do_hypercall(
+			HVCALL_FLUSH_VIRTUAL_ADDRESS_SPACE_EX |
+			(nr_bank << HV_HYPERCALL_VARHEAD_OFFSET),
+			flush, sizeof(*flush) + nr_bank * 8, NULL, 0);
 	} else {
 		gva_n = fill_gva_list(flush->gva_list, nr_bank,
 				      info->start, info->end);
