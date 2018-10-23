@@ -98,6 +98,7 @@ static bool __send_ipi_mask_ex(const struct cpumask *mask, int vector)
 	struct hv_send_ipi_ex *ipi_arg;
 	unsigned long flags;
 	int nr_bank = 0;
+	size_t ibytes;
 	int ret = 1;
 
 	if (!(ms_hyperv.hints & HV_X64_EX_PROCESSOR_MASKS_RECOMMENDED))
@@ -123,8 +124,12 @@ static bool __send_ipi_mask_ex(const struct cpumask *mask, int vector)
 	if (!nr_bank)
 		ipi_arg->vp_set.format = HV_GENERIC_SET_ALL;
 
-	ret = hv_do_rep_hypercall(HVCALL_SEND_IPI_EX, 0, nr_bank,
-			      ipi_arg, NULL);
+	/* see cpumask_to_vpset() and struct ipi_arg_ex */
+	ibytes = sizeof(*ipi_arg) +
+		nr_bank * sizeof(ipi_arg->vp_set.bank_contents[0]);
+	ret = hv_do_hypercall(
+		HVCALL_SEND_IPI_EX | (nr_bank << HV_HYPERCALL_VARHEAD_OFFSET),
+		ipi_arg, ibytes ,NULL, 0);
 
 ipi_mask_ex_done:
 	local_irq_restore(flags);
