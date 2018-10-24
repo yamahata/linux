@@ -396,6 +396,10 @@ static inline u64 hv_do_hypercall(
 
 	/* fast hypercall */
 	if (output == NULL && ibytes <= 16) {
+		/* Typically ibytes is compile time constant as sizeof(...).
+		 * So the code is optimized to call
+		 * hv_do_fast_hypercall directly.
+		 */
 		u64 *i = (u64*)input;
 
 		WARN_ON((varhead_code & HV_HYPERCALL_VARHEAD_MASK) != 0);
