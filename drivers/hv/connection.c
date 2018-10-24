@@ -457,6 +457,7 @@ void vmbus_set_event(struct vmbus_channel *channel)
 
 	++channel->sig_events;
 
-	hv_do_fast_hypercall8(HVCALL_SIGNAL_EVENT, channel->sig_event);
+	hv_do_hypercall(HVCALL_SIGNAL_EVENT, &channel->sig_event,
+			sizeof(channel->sig_event), NULL, 0);
 }
 EXPORT_SYMBOL_GPL(vmbus_set_event);
