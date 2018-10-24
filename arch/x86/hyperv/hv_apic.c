@@ -167,6 +167,7 @@ static bool __send_ipi_mask(const struct cpumask *mask, int vector)
 		goto do_ex_hypercall;
 
 	ipi_arg.vector = vector;
+	ipi_arg.reserved = 0;
 	ipi_arg.cpu_mask = 0;
 
 	for_each_cpu(cur_cpu, mask) {
@@ -184,8 +185,8 @@ static bool __send_ipi_mask(const struct cpumask *mask, int vector)
 		__set_bit(vcpu, (unsigned long *)&ipi_arg.cpu_mask);
 	}
 
-	ret = hv_do_fast_hypercall16(HVCALL_SEND_IPI, ipi_arg.vector,
-				     ipi_arg.cpu_mask);
+	ret = hv_do_hypercall(HVCALL_SEND_IPI,
+			      &ipi_arg, sizeof(ipi_arg), NULL, 0);
 	return ((ret == 0) ? true : false);
 
 do_ex_hypercall:
