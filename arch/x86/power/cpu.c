@@ -263,7 +263,7 @@ static void notrace __restore_processor_state(struct saved_context *ctxt)
 	do_fpu_end();
 	tsc_verify_tsc_adjust(true);
 	x86_platform.restore_sched_clock_state();
-	mtrr_bp_restore();
+	mtrr_pat_bp_restore();
 	perf_restore_debug_store();
 	msr_restore_context(ctxt);
 }

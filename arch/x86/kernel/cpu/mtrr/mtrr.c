@@ -71,14 +71,14 @@ unsigned int mtrr_usage_table[MTRR_MAX_VAR_RANGES];
 static DEFINE_MUTEX(mtrr_mutex);
 
 u64 size_or_mask, size_and_mask;
-static bool mtrr_aps_delayed_init;
+static bool mtrr_pat_aps_delayed_init;
 
 static const struct mtrr_ops *mtrr_ops[X86_VENDOR_NUM] __ro_after_init;
 
 const struct mtrr_ops *mtrr_if;
 
-static void set_mtrr(unsigned int reg, unsigned long base,
-		     unsigned long size, mtrr_type type);
+static void set_mtrr_pat(unsigned int reg, unsigned long base,
+                         unsigned long size, mtrr_type type);
 
 void __init set_mtrr_ops(const struct mtrr_ops *ops)
 {
@@ -152,13 +152,13 @@ struct set_mtrr_data {
 };
 
 /**
- * mtrr_rendezvous_handler - Work done in the synchronization handler. Executed
+ * mtrr_pat_rendezvous_handler - Work done in the synchronization handler. Executed
  * by all the CPUs.
  * @info: pointer to mtrr configuration data
  *
  * Returns nothing.
  */
-static int mtrr_rendezvous_handler(void *info)
+static int mtrr_pat_rendezvous_handler(void *info)
 {
 	struct set_mtrr_data *data = info;
 
@@ -178,7 +178,7 @@ static int mtrr_rendezvous_handler(void *info)
 	if (data->smp_reg != ~0U) {
 		mtrr_if->set(data->smp_reg, data->smp_base,
 			     data->smp_size, data->smp_type);
-	} else if (mtrr_aps_delayed_init || !cpu_online(smp_processor_id())) {
+	} else if (mtrr_pat_aps_delayed_init || !cpu_online(smp_processor_id())) {
 		mtrr_if->set_all();
 	}
 	return 0;
@@ -193,7 +193,7 @@ static inline int types_compatible(mtrr_type type1, mtrr_type type2)
 }
 
 /**
- * set_mtrr - update mtrrs on all processors
+ * set_mtrr_pat - update mtrrs on all processors
  * @reg:	mtrr in question
  * @base:	mtrr base
  * @size:	mtrr size
@@ -227,7 +227,7 @@ static inline int types_compatible(mtrr_type type1, mtrr_type type2)
  * becomes nops.
  */
 static void
-set_mtrr(unsigned int reg, unsigned long base, unsigned long size, mtrr_type type)
+set_mtrr_pat(unsigned int reg, unsigned long base, unsigned long size, mtrr_type type)
 {
 	struct set_mtrr_data data = { .smp_reg = reg,
 				      .smp_base = base,
@@ -235,11 +235,11 @@ set_mtrr(unsigned int reg, unsigned long base, unsigned long size, mtrr_type typ
 				      .smp_type = type
 				    };
 
-	stop_machine(mtrr_rendezvous_handler, &data, cpu_online_mask);
+	stop_machine(mtrr_pat_rendezvous_handler, &data, cpu_online_mask);
 }
 
-static void set_mtrr_cpuslocked(unsigned int reg, unsigned long base,
-				unsigned long size, mtrr_type type)
+static void set_mtrr_pat_cpuslocked(unsigned int reg, unsigned long base,
+                                    unsigned long size, mtrr_type type)
 {
 	struct set_mtrr_data data = { .smp_reg = reg,
 				      .smp_base = base,
@@ -247,11 +247,11 @@ static void set_mtrr_cpuslocked(unsigned int reg, unsigned long base,
 				      .smp_type = type
 				    };
 
-	stop_machine_cpuslocked(mtrr_rendezvous_handler, &data, cpu_online_mask);
+	stop_machine_cpuslocked(mtrr_pat_rendezvous_handler, &data, cpu_online_mask);
 }
 
-static void set_mtrr_from_inactive_cpu(unsigned int reg, unsigned long base,
-				      unsigned long size, mtrr_type type)
+static void set_mtrr_pat_from_inactive_cpu(unsigned int reg, unsigned long base,
+                                           unsigned long size, mtrr_type type)
 {
 	struct set_mtrr_data data = { .smp_reg = reg,
 				      .smp_base = base,
@@ -259,7 +259,7 @@ static void set_mtrr_from_inactive_cpu(unsigned int reg, unsigned long base,
 				      .smp_type = type
 				    };
 
-	stop_machine_from_inactive_cpu(mtrr_rendezvous_handler, &data,
+	stop_machine_from_inactive_cpu(mtrr_pat_rendezvous_handler, &data,
 				       cpu_callout_mask);
 }
 
@@ -382,7 +382,7 @@ int mtrr_add_page(unsigned long base, unsigned long size,
 	/* Search for an empty MTRR */
 	i = mtrr_if->get_free_region(base, size, replace);
 	if (i >= 0) {
-		set_mtrr_cpuslocked(i, base, size, type);
+		set_mtrr_pat_cpuslocked(i, base, size, type);
 		if (likely(replace < 0)) {
 			mtrr_usage_table[i] = 1;
 		} else {
@@ -390,7 +390,7 @@ int mtrr_add_page(unsigned long base, unsigned long size,
 			if (increment)
 				mtrr_usage_table[i]++;
 			if (unlikely(replace != i)) {
-				set_mtrr_cpuslocked(replace, 0, 0, 0);
+				set_mtrr_pat_cpuslocked(replace, 0, 0, 0);
 				mtrr_usage_table[replace] = 0;
 			}
 		}
@@ -518,7 +518,7 @@ int mtrr_del_page(int reg, unsigned long base, unsigned long size)
 		goto out;
 	}
 	if (--mtrr_usage_table[reg] < 1)
-		set_mtrr_cpuslocked(reg, 0, 0, 0);
+		set_mtrr_pat_cpuslocked(reg, 0, 0, 0);
 	error = reg;
  out:
 	mutex_unlock(&mtrr_mutex);
@@ -662,9 +662,9 @@ static void mtrr_restore(void)
 
 	for (i = 0; i < num_var_ranges; i++) {
 		if (mtrr_value[i].lsize) {
-			set_mtrr(i, mtrr_value[i].lbase,
-				    mtrr_value[i].lsize,
-				    mtrr_value[i].ltype);
+			set_mtrr_pat(i, mtrr_value[i].lbase,
+					mtrr_value[i].lsize,
+					mtrr_value[i].ltype);
 		}
 	}
 }
@@ -680,13 +680,13 @@ int __initdata changed_by_mtrr_cleanup;
 
 #define SIZE_OR_MASK_BITS(n)  (~((1ULL << ((n) - PAGE_SHIFT)) - 1))
 /**
- * mtrr_bp_init - initialize mtrrs on the boot CPU
+ * mtrr_pat_bp_init - initialize mtrrs on the boot CPU
  *
  * This needs to be called early; before any of the other CPUs are
  * initialized (i.e. before smp_init()).
  *
  */
-void __init mtrr_bp_init(void)
+void __init mtrr_pat_bp_init(void)
 {
 	u32 phys_addr;
 
@@ -786,12 +786,12 @@ void __init mtrr_bp_init(void)
 	}
 }
 
-void mtrr_ap_init(void)
+void mtrr_pat_ap_init(void)
 {
 	if (!mtrr_enabled())
 		return;
 
-	if (!use_intel() || mtrr_aps_delayed_init)
+	if (!use_intel() || mtrr_pat_aps_delayed_init)
 		return;
 
 	rcu_cpu_starting(smp_processor_id());
@@ -809,7 +809,7 @@ void mtrr_ap_init(void)
 	 *   2. cpu hotadd time. We let mtrr_add/del_page hold cpuhotplug
 	 *      lock to prevent mtrr entry changes
 	 */
-	set_mtrr_from_inactive_cpu(~0U, 0, 0, 0);
+	set_mtrr_pat_from_inactive_cpu(~0U, 0, 0, 0);
 }
 
 /**
@@ -826,37 +826,37 @@ void mtrr_save_state(void)
 	smp_call_function_single(first_cpu, mtrr_save_fixed_ranges, NULL, 1);
 }
 
-void set_mtrr_aps_delayed_init(void)
+void set_mtrr_pat_aps_delayed_init(void)
 {
 	if (!mtrr_enabled())
 		return;
 	if (!use_intel())
 		return;
 
-	mtrr_aps_delayed_init = true;
+	mtrr_pat_aps_delayed_init = true;
 }
 
 /*
  * Delayed MTRR initialization for all AP's
  */
-void mtrr_aps_init(void)
+void mtrr_pat_aps_init(void)
 {
 	if (!use_intel() || !mtrr_enabled())
 		return;
 
 	/*
 	 * Check if someone has requested the delay of AP MTRR initialization,
-	 * by doing set_mtrr_aps_delayed_init(), prior to this point. If not,
+	 * by doing set_mtrr_pat_aps_delayed_init(), prior to this point. If not,
 	 * then we are done.
 	 */
-	if (!mtrr_aps_delayed_init)
+	if (!mtrr_pat_aps_delayed_init)
 		return;
 
-	set_mtrr(~0U, 0, 0, 0);
-	mtrr_aps_delayed_init = false;
+	set_mtrr_pat(~0U, 0, 0, 0);
+	mtrr_pat_aps_delayed_init = false;
 }
 
-void mtrr_bp_restore(void)
+void mtrr_pat_bp_restore(void)
 {
 	if (!use_intel() || !mtrr_enabled())
 		return;

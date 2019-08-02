@@ -42,11 +42,11 @@ extern int mtrr_add_page(unsigned long base, unsigned long size,
 extern int mtrr_del(int reg, unsigned long base, unsigned long size);
 extern int mtrr_del_page(int reg, unsigned long base, unsigned long size);
 extern void mtrr_centaur_report_mcr(int mcr, u32 lo, u32 hi);
-extern void mtrr_ap_init(void);
-extern void mtrr_bp_init(void);
-extern void set_mtrr_aps_delayed_init(void);
-extern void mtrr_aps_init(void);
-extern void mtrr_bp_restore(void);
+extern void mtrr_pat_ap_init(void);
+extern void mtrr_pat_bp_init(void);
+extern void set_mtrr_pat_aps_delayed_init(void);
+extern void mtrr_pat_aps_init(void);
+extern void mtrr_pat_bp_restore(void);
 extern int mtrr_trim_uncached_memory(unsigned long end_pfn);
 extern int amd_special_default_mtrr(void);
 #  else
@@ -84,15 +84,15 @@ static inline int mtrr_trim_uncached_memory(unsigned long end_pfn)
 static inline void mtrr_centaur_report_mcr(int mcr, u32 lo, u32 hi)
 {
 }
-static inline void mtrr_bp_init(void)
+static inline void mtrr_pat_bp_init(void)
 {
 	pat_disable("MTRRs disabled, skipping PAT initialization too.");
 }
 
-#define mtrr_ap_init() do {} while (0)
-#define set_mtrr_aps_delayed_init() do {} while (0)
-#define mtrr_aps_init() do {} while (0)
-#define mtrr_bp_restore() do {} while (0)
+static inline void mtrr_pat_ap_init(void) { };
+static inline void set_mtrr_pat_aps_delayed_init(void) { };
+static inline void mtrr_pat_aps_init(void) { };
+static inline void mtrr_pat_bp_restore(void) { };
 #  endif
 
 #ifdef CONFIG_COMPAT

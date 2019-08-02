@@ -1370,7 +1370,7 @@ void __init native_smp_prepare_cpus(unsigned int max_cpus)
 
 	uv_system_init();
 
-	set_mtrr_aps_delayed_init();
+	set_mtrr_pat_aps_delayed_init();
 
 	smp_quirk_init_udelay();
 
@@ -1379,12 +1379,12 @@ void __init native_smp_prepare_cpus(unsigned int max_cpus)
 
 void arch_enable_nonboot_cpus_begin(void)
 {
-	set_mtrr_aps_delayed_init();
+	set_mtrr_pat_aps_delayed_init();
 }
 
 void arch_enable_nonboot_cpus_end(void)
 {
-	mtrr_aps_init();
+	mtrr_pat_aps_init();
 }
 
 /*
@@ -1424,7 +1424,7 @@ void __init native_smp_cpus_done(unsigned int max_cpus)
 
 	nmi_selftest();
 	impress_friends();
-	mtrr_aps_init();
+	mtrr_pat_aps_init();
 }
 
 static int __initdata setup_possible_cpus = -1;
