@@ -33,6 +33,8 @@
  */
 # ifdef CONFIG_MTRR
 extern bool mtrr_enabled(void);
+extern void mtrr_pat_prepare_set(void) __acquires(set_atomicity_lock);
+extern void mtrr_pat_post_set(void) __releases(set_atomicity_lock);
 extern u8 mtrr_type_lookup(u64 addr, u64 end, u8 *uniform);
 extern void mtrr_save_fixed_ranges(void *);
 extern void mtrr_save_state(void);
@@ -55,6 +57,8 @@ static inline bool mtrr_enabled(void)
 {
         return false;
 }
+static inline void mtrr_pat_prepare_set(void) { };
+static inline void mtrr_pat_post_set(void) { };
 static inline u8 mtrr_type_lookup(u64 addr, u64 end, u8 *uniform)
 {
 	/*

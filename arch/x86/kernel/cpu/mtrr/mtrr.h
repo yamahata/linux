@@ -76,6 +76,7 @@ void set_mtrr_pat(unsigned int reg, unsigned long base,
                   unsigned long size, mtrr_type type);
 void set_mtrr_pat_cpuslocked(unsigned int reg, unsigned long base,
                              unsigned long size, mtrr_type type);
+extern u32 mtrr_deftype_lo, mtrr_deftype_hi;
 
 /* CPU specific mtrr init functions */
 int amd_init_mtrr(void);

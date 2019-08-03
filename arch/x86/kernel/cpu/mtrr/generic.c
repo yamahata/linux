@@ -397,9 +397,6 @@ print_fixed(unsigned base, unsigned step, const mtrr_type *types)
 	}
 }
 
-static void mtrr_pat_prepare_set(void);
-static void mtrr_pat_post_set(void);
-
 static void __init print_mtrr_state(void)
 {
 	unsigned int i;
@@ -443,20 +440,6 @@ static void __init print_mtrr_state(void)
 	}
 	if (mtrr_tom2)
 		pr_debug("TOM2: %016llx aka %lldM\n", mtrr_tom2, mtrr_tom2>>20);
-}
-
-/* PAT setup for BP. We need to go through sync steps here */
-void __init pat_bp_init(void)
-{
-	unsigned long flags;
-
-	local_irq_save(flags);
-	mtrr_pat_prepare_set();
-
-	pat_init();
-
-	mtrr_pat_post_set();
-	local_irq_restore(flags);
 }
 
 /* Grab all of the MTRR state for this CPU into *state */
@@ -680,8 +663,6 @@ static bool set_mtrr_var_ranges(unsigned int index, struct mtrr_var_range *vr)
 	return changed;
 }
 
-static u32 mtrr_deftype_lo, mtrr_deftype_hi;
-
 /**
  * set_mtrr_state - Set the MTRR state for this CPU.
  *
@@ -714,82 +695,6 @@ static unsigned long set_mtrr_state(void)
 	}
 
 	return change_mask;
-}
-
-
-static unsigned long cr4;
-static DEFINE_RAW_SPINLOCK(set_atomicity_lock);
-
-/*
- * Since we are disabling the cache don't allow any interrupts,
- * they would run extremely slow and would only increase the pain.
- *
- * The caller must ensure that local interrupts are disabled and
- * are reenabled after mtrr_pat_post_set() has been called.
- */
-static void mtrr_pat_prepare_set(void) __acquires(set_atomicity_lock)
-{
-	unsigned long cr0;
-
-	/*
-	 * Note that this is not ideal
-	 * since the cache is only flushed/disabled for this CPU while the
-	 * MTRRs are changed, but changing this requires more invasive
-	 * changes to the way the kernel boots
-	 */
-
-	raw_spin_lock(&set_atomicity_lock);
-
-	/* Enter the no-fill (CD=1, NW=0) cache mode and flush caches. */
-	cr0 = read_cr0() | X86_CR0_CD;
-	write_cr0(cr0);
-
-	/*
-	 * Cache flushing is the most time-consuming step when programming
-	 * the MTRRs. Fortunately, as per the Intel Software Development
-	 * Manual, we can skip it if the processor supports cache self-
-	 * snooping.
-	 */
-	if (!static_cpu_has(X86_FEATURE_SELFSNOOP))
-		wbinvd();
-
-	/* Save value of CR4 and clear Page Global Enable (bit 7) */
-	if (boot_cpu_has(X86_FEATURE_PGE)) {
-		cr4 = __read_cr4();
-		__write_cr4(cr4 & ~X86_CR4_PGE);
-	}
-
-	/* Flush all TLBs via a mov %cr3, %reg; mov %reg, %cr3 */
-	count_vm_tlb_event(NR_TLB_LOCAL_FLUSH_ALL);
-	__flush_tlb();
-
-	/* Save MTRR state */
-	rdmsr(MSR_MTRRdefType, mtrr_deftype_lo, mtrr_deftype_hi);
-
-	/* Disable MTRRs, and set the default type to uncached */
-	mtrr_wrmsr(MSR_MTRRdefType, mtrr_deftype_lo & ~0xcff, mtrr_deftype_hi);
-
-	/* Again, only flush caches if we have to. */
-	if (!static_cpu_has(X86_FEATURE_SELFSNOOP))
-		wbinvd();
-}
-
-static void mtrr_pat_post_set(void) __releases(set_atomicity_lock)
-{
-	/* Flush TLBs (no need to flush caches - they are disabled) */
-	count_vm_tlb_event(NR_TLB_LOCAL_FLUSH_ALL);
-	__flush_tlb();
-
-	/* Intel (P6) standard MTRRs */
-	mtrr_wrmsr(MSR_MTRRdefType, mtrr_deftype_lo, mtrr_deftype_hi);
-
-	/* Enable caches */
-	write_cr0(read_cr0() & ~X86_CR0_CD);
-
-	/* Restore value of CR4 */
-	if (boot_cpu_has(X86_FEATURE_PGE))
-		__write_cr4(cr4);
-	raw_spin_unlock(&set_atomicity_lock);
 }
 
 static void generic_set_all(void)
