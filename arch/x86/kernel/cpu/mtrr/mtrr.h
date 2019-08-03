@@ -71,6 +71,12 @@ void mtrr_state_warn(void);
 const char *mtrr_attrib_to_str(int x);
 void mtrr_wrmsr(unsigned, unsigned, unsigned);
 
+/* rendezvous */
+void set_mtrr_pat(unsigned int reg, unsigned long base,
+                  unsigned long size, mtrr_type type);
+void set_mtrr_pat_cpuslocked(unsigned int reg, unsigned long base,
+                             unsigned long size, mtrr_type type);
+
 /* CPU specific mtrr init functions */
 int amd_init_mtrr(void);
 int cyrix_init_mtrr(void);
