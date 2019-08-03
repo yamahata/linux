@@ -7,7 +7,9 @@
 
 bool pat_enabled(void);
 void pat_disable(const char *reason);
+extern void pat_set(void);
 extern void pat_init(void);
+extern void pat_bp_init(void);
 extern void init_cache_modes(void);
 
 extern int reserve_memtype(u64 start, u64 end,

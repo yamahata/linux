@@ -1838,7 +1838,6 @@ config MTRR_SANITIZER_SPARE_REG_NR_DEFAULT
 config X86_PAT
 	def_bool y
 	prompt "x86 PAT support" if EXPERT
-	depends on MTRR
 	---help---
 	  Use PAT attributes to setup page level cache control.
 

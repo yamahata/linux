@@ -51,20 +51,6 @@ u32 mtrr_deftype_lo, mtrr_deftype_hi;
 static unsigned long cr4;
 static DEFINE_RAW_SPINLOCK(set_atomicity_lock);
 
-/* PAT setup for BP. We need to go through sync steps here */
-void __init pat_bp_init(void)
-{
-	unsigned long flags;
-
-	local_irq_save(flags);
-	mtrr_pat_prepare_set();
-
-	pat_init();
-
-	mtrr_pat_post_set();
-	local_irq_restore(flags);
-}
-
 /*
  * Since we are disabling the cache don't allow any interrupts,
  * they would run extremely slow and would only increase the pain.
@@ -108,11 +94,14 @@ void mtrr_pat_prepare_set(void) __acquires(set_atomicity_lock)
 	count_vm_tlb_event(NR_TLB_LOCAL_FLUSH_ALL);
 	__flush_tlb();
 
-	/* Save MTRR state */
-	rdmsr(MSR_MTRRdefType, mtrr_deftype_lo, mtrr_deftype_hi);
+	if (mtrr_enabled()) {
+		/* Save MTRR state */
+		rdmsr(MSR_MTRRdefType, mtrr_deftype_lo, mtrr_deftype_hi);
 
-	/* Disable MTRRs, and set the default type to uncached */
-	mtrr_wrmsr(MSR_MTRRdefType, mtrr_deftype_lo & ~0xcff, mtrr_deftype_hi);
+		/* Disable MTRRs, and set the default type to uncached */
+		mtrr_wrmsr(MSR_MTRRdefType, mtrr_deftype_lo & ~0xcff,
+			   mtrr_deftype_hi);
+	}
 
 	/* Again, only flush caches if we have to. */
 	if (!static_cpu_has(X86_FEATURE_SELFSNOOP))
@@ -125,8 +114,10 @@ void mtrr_pat_post_set(void) __releases(set_atomicity_lock)
 	count_vm_tlb_event(NR_TLB_LOCAL_FLUSH_ALL);
 	__flush_tlb();
 
-	/* Intel (P6) standard MTRRs */
-	mtrr_wrmsr(MSR_MTRRdefType, mtrr_deftype_lo, mtrr_deftype_hi);
+	if (mtrr_enabled()) {
+		/* Intel (P6) standard MTRRs */
+		mtrr_wrmsr(MSR_MTRRdefType, mtrr_deftype_lo, mtrr_deftype_hi);
+	}
 
 	/* Enable caches */
 	write_cr0(read_cr0() & ~X86_CR0_CD);
@@ -135,6 +126,15 @@ void mtrr_pat_post_set(void) __releases(set_atomicity_lock)
 	if (boot_cpu_has(X86_FEATURE_PGE))
 		__write_cr4(cr4);
 	raw_spin_unlock(&set_atomicity_lock);
+}
+
+static inline void mtrr_pat_set_all(void)
+{
+	if (mtrr_enabled()) {
+		mtrr_if->set_all();
+	} else {
+		pat_set();
+	}
 }
 
 struct set_mtrr_data {
@@ -169,16 +169,18 @@ static int mtrr_pat_rendezvous_handler(void *info)
 	 * set_all()).
 	 */
 	if (data->smp_reg != ~0U) {
-		mtrr_if->set(data->smp_reg, data->smp_base,
-			     data->smp_size, data->smp_type);
+		if (mtrr_enabled()) {
+			mtrr_if->set(data->smp_reg, data->smp_base,
+				     data->smp_size, data->smp_type);
+		}
 	} else if (mtrr_pat_aps_delayed_init || !cpu_online(smp_processor_id())) {
-		mtrr_if->set_all();
+		mtrr_pat_set_all();
 	}
 	return 0;
 }
 
 /**
- * set_mtrr_pat - update mtrrs on all processors
+ * set_mtrr_pat - update mtrrs and pat on all processors
  * @reg:	mtrr in question
  * @base:	mtrr base
  * @size:	mtrr size
@@ -231,7 +233,7 @@ void set_mtrr_pat_cpuslocked(unsigned int reg, unsigned long base,
 				      .smp_size = size,
 				      .smp_type = type
 				    };
-
+	BUG_ON(!mtrr_enabled());
 	stop_machine_cpuslocked(mtrr_pat_rendezvous_handler, &data, cpu_online_mask);
 }
 
@@ -248,12 +250,25 @@ static void set_mtrr_pat_from_inactive_cpu(unsigned int reg, unsigned long base,
 				       cpu_callout_mask);
 }
 
+static inline bool use_intel_mtrr_pat(void)
+{
+	if (mtrr_enabled() || pat_enabled()) {
+		return true;
+	}
+
+#ifdef CONFIG_MTRR
+	return use_intel();
+#else
+	return true;
+#endif
+}
+
 void mtrr_pat_ap_init(void)
 {
-	if (!mtrr_enabled())
+	if (!use_intel_mtrr_pat())
 		return;
 
-	if (!use_intel() || mtrr_pat_aps_delayed_init)
+	if (mtrr_pat_aps_delayed_init)
 		return;
 
 	rcu_cpu_starting(smp_processor_id());
@@ -276,9 +291,7 @@ void mtrr_pat_ap_init(void)
 
 void set_mtrr_pat_aps_delayed_init(void)
 {
-	if (!mtrr_enabled())
-		return;
-	if (!use_intel())
+	if (!use_intel_mtrr_pat())
 		return;
 
 	mtrr_pat_aps_delayed_init = true;
@@ -289,7 +302,7 @@ void set_mtrr_pat_aps_delayed_init(void)
  */
 void mtrr_pat_aps_init(void)
 {
-	if (!use_intel() || !mtrr_enabled())
+	if (!use_intel_mtrr_pat())
 		return;
 
 	/*
@@ -306,8 +319,8 @@ void mtrr_pat_aps_init(void)
 
 void mtrr_pat_bp_restore(void)
 {
-	if (!use_intel() || !mtrr_enabled())
+	if (!use_intel_mtrr_pat())
 		return;
 
-	mtrr_if->set_all();
+	mtrr_pat_set_all();
 }

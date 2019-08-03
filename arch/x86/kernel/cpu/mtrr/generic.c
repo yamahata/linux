@@ -6,13 +6,8 @@
 #define DEBUG
 
 #include <linux/export.h>
-#include <linux/init.h>
-#include <linux/io.h>
 #include <linux/mm.h>
 
-#include <asm/processor-flags.h>
-#include <asm/cpufeature.h>
-#include <asm/tlbflush.h>
 #include <asm/mtrr.h>
 #include <asm/msr.h>
 #include <asm/pat.h>

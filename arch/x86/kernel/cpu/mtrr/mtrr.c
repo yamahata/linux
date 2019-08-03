@@ -656,14 +656,8 @@ void __init mtrr_pat_bp_init(void)
 	}
 
 	if (!mtrr_enabled()) {
-		pr_info("Disabled\n");
-
-		/*
-		 * PAT initialization relies on MTRR's rendezvous handler.
-		 * Skip PAT init until the handler can initialize both
-		 * features independently.
-		 */
-		pat_disable("MTRRs disabled, skipping PAT initialization too.");
+		pr_info("MTRR: Disabled\n");
+		pat_bp_init();
 	}
 }
 
