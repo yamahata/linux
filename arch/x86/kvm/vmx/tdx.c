@@ -582,6 +582,7 @@ int tdx_vm_init(struct kvm *kvm)
 {
 	kvm->arch.has_private_mem = true;
 	kvm->arch.has_protected_state = true;
+	kvm->readonly_mem_unsupported = true;
 
 	/*
 	 * Because guest TD is protected, VMM can't parse the instruction in TD.
