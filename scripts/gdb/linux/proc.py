@@ -133,8 +133,8 @@ MNT_INFO = {constants.LX_MNT_NOSUID: ",nosuid",
             constants.LX_MNT_NODIRATIME: ",nodiratime",
             constants.LX_MNT_RELATIME: ",relatime"}
 
-mount_type = utils.CachedType("struct mount")
-mount_ptr_type = mount_type.get_type().pointer()
+# mount_type = utils.CachedType("struct mount")
+# mount_ptr_type = mount_type.get_type().pointer()
 
 
 class LxMounts(gdb.Command):
