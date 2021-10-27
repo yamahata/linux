@@ -1983,10 +1983,19 @@ enum kvm_intr_type {
 	KVM_HANDLING_NMI,
 };
 
+/*
+ * Because guest state is protected, guest IP can't be retrieved to
+ * record.  Fake it so that it's not in guest.
+ *
+ * Because struct kvm_vcpu isn't defined here, static inline function can't be
+ * used.  Resort to use macro.
+ */
 /* Enable perf NMI and timer modes to work, and minimise false positives. */
 #define kvm_arch_pmi_in_guest(vcpu) \
-	((vcpu) && (vcpu)->arch.handling_intr_from_guest && \
-	 (!!in_nmi() == ((vcpu)->arch.handling_intr_from_guest == KVM_HANDLING_NMI)))
+	({ ((vcpu) && (vcpu)->arch.guest_state_protected) ?		\
+		false :							\
+		((vcpu) && (vcpu)->arch.handling_intr_from_guest &&	\
+		 (!!in_nmi() == ((vcpu)->arch.handling_intr_from_guest == KVM_HANDLING_NMI))); })
 
 void __init kvm_mmu_x86_module_init(void);
 int kvm_mmu_vendor_module_init(void);
