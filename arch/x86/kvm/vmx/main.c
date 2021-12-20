@@ -26,6 +26,14 @@ static __init int vt_hardware_setup(void)
 	return 0;
 }
 
+static int vt_vm_init(struct kvm *kvm)
+{
+	if (is_td(kvm))
+		return -EOPNOTSUPP;	/* Not ready to create guest TD yet. */
+
+	return vmx_vm_init(kvm);
+}
+
 #define VMX_REQUIRED_APICV_INHIBITS				\
 	(BIT(APICV_INHIBIT_REASON_DISABLE)|			\
 	 BIT(APICV_INHIBIT_REASON_ABSENT) |			\
@@ -48,7 +56,7 @@ struct kvm_x86_ops vt_x86_ops __initdata = {
 	.has_emulated_msr = vmx_has_emulated_msr,
 
 	.vm_size = sizeof(struct kvm_vmx),
-	.vm_init = vmx_vm_init,
+	.vm_init = vt_vm_init,
 	.vm_destroy = vmx_vm_destroy,
 
 	.vcpu_precreate = vmx_vcpu_precreate,
@@ -227,6 +235,7 @@ static int __init vt_init(void)
 				  sizeof(struct vcpu_tdx));
 		vcpu_align = max_t(unsigned int, vcpu_align,
 				   __alignof__(struct vcpu_tdx));
+		kvm_caps.supported_vm_types |= BIT(KVM_X86_TDX_VM);
 	}
 	r = kvm_init(vcpu_size, vcpu_align, THIS_MODULE);
 	if (r)
