@@ -12,8 +12,9 @@
 static bool enable_tdx __ro_after_init;
 module_param_named(tdx, enable_tdx, bool, 0444);
 
-#if IS_ENABLED(CONFIG_HYPERV)
+#if IS_ENABLED(CONFIG_HYPERV) || IS_ENABLED(CONFIG_INTEL_TDX_HOST)
 static int vt_flush_remote_tlbs(struct kvm *kvm);
+static int vt_flush_remote_tlbs_range(struct kvm *kvm, gfn_t gfn, gfn_t nr_pages);
 #endif
 
 static void vt_hardware_disable(void)
@@ -44,7 +45,7 @@ static __init int vt_hardware_setup(void)
 		pr_warn_ratelimited("TDX requires mmio caching.  Please enable mmio caching for TDX.\n");
 	}
 
-#if IS_ENABLED(CONFIG_HYPERV)
+#if IS_ENABLED(CONFIG_HYPERV) || IS_ENABLED(CONFIG_INTEL_TDX_HOST)
 	/*
 	 * TDX KVM overrides flush_remote_tlbs method and assumes
 	 * flush_remote_tlbs_range = NULL that falls back to
@@ -64,9 +65,11 @@ static __init int vt_hardware_setup(void)
 	else
 		vt_x86_ops.protected_apic_has_interrupt = NULL;
 
-#if IS_ENABLED(CONFIG_HYPERV)
-	if (enable_tdx)
+#if IS_ENABLED(CONFIG_HYPERV) || IS_ENABLED(CONFIG_INTEL_TDX_HOST)
+	if (enable_tdx) {
 		vt_x86_ops.flush_remote_tlbs = vt_flush_remote_tlbs;
+		vt_x86_ops.flush_remote_tlbs_range = vt_flush_remote_tlbs_range;
+	}
 #endif
 
 	return 0;
@@ -638,7 +641,7 @@ static void vt_flush_tlb_current(struct kvm_vcpu *vcpu)
 	vmx_flush_tlb_current(vcpu);
 }
 
-#if IS_ENABLED(CONFIG_HYPERV)
+#if IS_ENABLED(CONFIG_HYPERV) || IS_ENABLED(CONFIG_INTEL_TDX_HOST)
 static int vt_flush_remote_tlbs(struct kvm *kvm)
 {
 	if (is_td(kvm))
@@ -648,6 +651,15 @@ static int vt_flush_remote_tlbs(struct kvm *kvm)
 	 * fallback to KVM_REQ_TLB_FLUSH.
 	 * See kvm_arch_flush_remote_tlb() and kvm_flush_remote_tlbs().
 	 */
+	return -EOPNOTSUPP;
+}
+
+static int vt_flush_remote_tlbs_range(struct kvm *kvm, gfn_t gfn, gfn_t nr_pages)
+{
+	if (is_td(kvm))
+		return tdx_sept_flush_remote_tlbs_range(kvm, gfn, nr_pages);
+
+	/* fallback to flush_remote_tlbs method */
 	return -EOPNOTSUPP;
 }
 #endif
