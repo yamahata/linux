@@ -1578,3 +1578,14 @@ void __init tdx_init(void)
 
 	check_tdx_erratum();
 }
+
+bool tdx_is_enabled(void)
+{
+	bool r;
+
+	mutex_lock(&tdx_module_lock);
+	r = tdx_module_status == TDX_MODULE_INITIALIZED;
+	mutex_unlock(&tdx_module_lock);
+	return  r;
+}
+EXPORT_SYMBOL(tdx_is_enabled);
