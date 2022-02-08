@@ -2476,4 +2476,7 @@ void kvm_arch_gmem_invalidate(kvm_pfn_t start, kvm_pfn_t end);
 int kvm_arch_vcpu_map_memory(struct kvm_vcpu *vcpu,
 			     struct kvm_memory_mapping *mapping);
 
+void kvm_hardware_enable_lock(void);
+void kvm_hardware_enable_unlock(void);
+
 #endif
