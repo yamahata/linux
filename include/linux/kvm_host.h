@@ -2455,4 +2455,7 @@ void kvm_arch_vcpu_pre_memory_mapping(struct kvm_vcpu *vcpu);
 int kvm_arch_vcpu_memory_mapping(struct kvm_vcpu *vcpu,
 				 struct kvm_memory_mapping *mapping);
 
+void kvm_hardware_enable_lock(void);
+void kvm_hardware_enable_unlock(void);
+
 #endif
