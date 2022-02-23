@@ -5,12 +5,14 @@
 #ifdef CONFIG_INTEL_TDX_HOST
 struct kvm_tdx {
 	struct kvm kvm;
-	/* TDX specific members follow. */
+
+	unsigned long tdr_pa;
 };
 
 struct vcpu_tdx {
 	struct kvm_vcpu	vcpu;
-	/* TDX specific members follow. */
+
+	unsigned long tdvpr_pa;
 };
 
 static inline bool is_td(struct kvm *kvm)
