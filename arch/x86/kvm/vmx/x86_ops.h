@@ -206,6 +206,7 @@ void tdx_post_memory_mapping(struct kvm_vcpu *vcpu,
 
 void tdx_load_guest_debug_regs(struct kvm_vcpu *vcpu);
 void tdx_sync_dirty_debug_regs(struct kvm_vcpu *vcpu);
+void tdx_update_exception_bitmap(struct kvm_vcpu *vcpu);
 
 int tdx_vm_move_enc_context_from(struct kvm *kvm, unsigned int source_fd);
 #else
@@ -297,6 +298,7 @@ static inline void tdx_post_memory_mapping(struct kvm_vcpu *vcpu, struct kvm_mem
 
 static inline void tdx_load_guest_debug_regs(struct kvm_vcpu *vcpu) {}
 static inline void tdx_sync_dirty_debug_regs(struct kvm_vcpu *vcpu) {}
+static inline void tdx_update_exception_bitmap(struct kvm_vcpu *vcpu) {}
 
 static inline int tdx_vm_move_enc_context_from(struct kvm *kvm, unsigned int source_fd)
 {
