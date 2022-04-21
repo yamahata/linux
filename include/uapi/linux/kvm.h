@@ -1008,6 +1008,7 @@ struct kvm_enable_cap {
 #define KVM_CAP_MEMORY_ATTRIBUTES 233
 #define KVM_CAP_GUEST_MEMFD 234
 #define KVM_CAP_VM_TYPES 235
+#define KVM_CAP_ENCRYPT_MEMORY_DEBUG 237
 
 /* TODO: remove this workaround to avoid CAP number conflict in the upstream. */
 #define KVM_CAP_X86_BUS_FREQUENCY_CONTROL 400
@@ -1477,6 +1478,10 @@ struct kvm_enc_region {
 
 #define KVM_GET_SREGS2             _IOR(KVMIO,  0xcc, struct kvm_sregs2)
 #define KVM_SET_SREGS2             _IOW(KVMIO,  0xcd, struct kvm_sregs2)
+
+/* Read/write encrypted guest memory, for guest debugging support in QEMU*/
+#define KVM_MEMORY_ENCRYPT_READ_MEMORY   _IOWR(KVMIO, 0xcc, struct kvm_rw_memory)
+#define KVM_MEMORY_ENCRYPT_WRITE_MEMORY  _IOWR(KVMIO, 0xcd, struct kvm_rw_memory)
 
 #define KVM_DIRTY_LOG_MANUAL_PROTECT_ENABLE    (1 << 0)
 #define KVM_DIRTY_LOG_INITIALLY_SET            (1 << 1)
