@@ -250,6 +250,14 @@ static inline gfn_t kvm_gfn_for_root(struct kvm *kvm, struct kvm_mmu_page *root,
 		return kvm_gfn_to_shared(kvm, gfn);
 }
 
+static inline int kvm_mmu_link_private_spt(struct kvm *kvm,
+					struct kvm_mmu_page *sp)
+{
+	/* Link this sp to its parent spte.  + 1 for parent spte. */
+	return static_call(kvm_x86_link_private_spt)(kvm, sp->gfn, sp->role.level + 1,
+						     sp->private_spt);
+}
+
 static inline bool kvm_mmu_page_ad_need_write_protect(struct kvm_mmu_page *sp)
 {
 	/*
