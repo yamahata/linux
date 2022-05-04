@@ -131,11 +131,13 @@ static inline bool is_td_vcpu(struct kvm_vcpu *vcpu)
 
 static __always_inline struct kvm_tdx *to_kvm_tdx(struct kvm *kvm)
 {
+	KVM_BUG_ON(!is_td(kvm), kvm);
 	return container_of(kvm, struct kvm_tdx, kvm);
 }
 
 static __always_inline struct vcpu_tdx *to_tdx(struct kvm_vcpu *vcpu)
 {
+	KVM_BUG_ON(!is_td_vcpu(vcpu), vcpu->kvm);
 	return container_of(vcpu, struct vcpu_tdx, vcpu);
 }
 
