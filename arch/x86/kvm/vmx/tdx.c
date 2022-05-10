@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 #include <linux/cpu.h>
 #include <linux/mmu_context.h>
+#include <linux/misc_cgroup.h>
 
 #include <asm/fpu/xcr.h>
 #include <asm/tdx.h>
@@ -192,6 +193,9 @@ static inline void tdx_hkid_free(struct kvm_tdx *kvm_tdx)
 	tdx_guest_keyid_free(kvm_tdx->hkid);
 	kvm_tdx->hkid = -1;
 	atomic_dec(&nr_configured_hkid);
+	misc_cg_uncharge(MISC_CG_RES_TDX, kvm_tdx->misc_cg, 1);
+	put_misc_cg(kvm_tdx->misc_cg);
+	kvm_tdx->misc_cg = NULL;
 }
 
 static inline bool is_hkid_assigned(struct kvm_tdx *kvm_tdx)
@@ -2587,6 +2591,10 @@ static int __tdx_td_init(struct kvm *kvm, struct td_params *td_params,
 		return ret;
 	kvm_tdx->hkid = ret;
 	atomic_inc(&nr_configured_hkid);
+	kvm_tdx->misc_cg = get_current_misc_cg();
+	ret = misc_cg_try_charge(MISC_CG_RES_TDX, kvm_tdx->misc_cg, 1);
+	if (ret)
+		goto free_hkid;
 
 	va = __get_free_page(GFP_KERNEL_ACCOUNT);
 	if (!va)
@@ -3449,11 +3457,16 @@ int __init tdx_hardware_setup(struct kvm_x86_ops *x86_ops)
 		return -EIO;
 	}
 
+	if (misc_cg_set_capacity(MISC_CG_RES_TDX, tdx_nr_guest_keyids))
+		return -EINVAL;
+
 	max_pkgs = topology_max_packages();
 	tdx_mng_key_config_lock = kcalloc(max_pkgs, sizeof(*tdx_mng_key_config_lock),
 				   GFP_KERNEL);
-	if (!tdx_mng_key_config_lock)
-		return -ENOMEM;
+	if (!tdx_mng_key_config_lock) {
+		r = -ENOMEM;
+		goto out;
+	}
 	for (i = 0; i < max_pkgs; i++)
 		mutex_init(&tdx_mng_key_config_lock[i]);
 
@@ -3499,6 +3512,7 @@ out:
 	/* kfree() accepts NULL. */
 	kfree(tdx_mng_key_config_lock);
 	tdx_mng_key_config_lock = NULL;
+	misc_cg_set_capacity(MISC_CG_RES_TDX, 0);
 	return r;
 }
 
@@ -3506,6 +3520,7 @@ void tdx_hardware_unsetup(void)
 {
 	kfree(tdx_info);
 	kfree(tdx_mng_key_config_lock);
+	misc_cg_set_capacity(MISC_CG_RES_TDX, 0);
 }
 
 int tdx_offline_cpu(void)
