@@ -5,6 +5,7 @@
 #include "vmx.h"
 #include "mmu.h"
 #include "nested.h"
+#include "common.h"
 #include "pmu.h"
 #include "tdx.h"
 #include "tdx_arch.h"
@@ -793,10 +794,10 @@ static void vt_set_interrupt_shadow(struct kvm_vcpu *vcpu, int mask)
 
 static u32 vt_get_interrupt_shadow(struct kvm_vcpu *vcpu)
 {
-	if (is_td_vcpu(vcpu))
+	if (is_td_vcpu(vcpu) && !is_debug_td(vcpu))
 		return 0;
 
-	return vmx_get_interrupt_shadow(vcpu);
+	return __vmx_get_interrupt_shadow(vcpu);
 }
 
 static void vt_patch_hypercall(struct kvm_vcpu *vcpu,
