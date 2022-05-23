@@ -893,10 +893,25 @@ bool kvm_para_available(void)
 }
 EXPORT_SYMBOL_GPL(kvm_para_available);
 
+/*
+ * REVERTME: some features (e.g. KVM pv clock) depends on VMM.  Because TDX
+ * doesn't trust VMM, some features should be unconditionally disabled.
+ * Because some features (e.g. PV send IPI) depends on VMM anyway, so filtering
+ * doesn't make sense.
+ */
+#define KVM_TDX_PV_FEATURES			\
+	((1ULL << KVM_FEATURE_NOP_IO_DELAY) |	\
+	 (1ULL << KVM_FEATURE_PV_UNHALT) |	\
+	 (1ULL << KVM_FEATURE_PV_TLB_FLUSH) |	\
+	 (1ULL << KVM_FEATURE_PV_SEND_IPI) |	\
+	 (1ULL << KVM_FEATURE_POLL_CONTROL) |	\
+	 (1ULL << KVM_FEATURE_PV_SCHED_YIELD) | \
+	 (1ULL << KVM_FEATURE_MSI_EXT_DEST_ID))
+
 static unsigned int kvm_trusted_features(void)
 {
 	if (cc_platform_has(CC_ATTR_GUEST_CPUID_FILTER))
-		return KVM_FEATURES_TRUSTED;
+		return KVM_FEATURES_TRUSTED | KVM_TDX_PV_FEATURES;
 	return -1;
 }
 
@@ -908,6 +923,8 @@ unsigned int kvm_arch_para_features(void)
 
 unsigned int kvm_arch_para_hints(void)
 {
+	if (cpu_feature_enabled(X86_FEATURE_TDX_GUEST))
+		return cpuid_eax(kvm_cpuid_base() | KVM_CPUID_FEATURES) & KVM_TDX_PV_FEATURES;
 	return cpuid_edx(kvm_cpuid_base() | KVM_CPUID_FEATURES);
 }
 EXPORT_SYMBOL_GPL(kvm_arch_para_hints);
