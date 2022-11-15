@@ -1629,6 +1629,7 @@ static int tdx_sept_drop_private_spte(struct kvm *kvm, gfn_t gfn,
 			       __FILE__, __LINE__, __func__, gfn, level, pfn);
 			return -EIO;
 		}
+		tdx_set_page_present_level(hpa, level);
 		tdx_unpin(kvm, pfn, level);
 		return 0;
 	}
@@ -1646,6 +1647,7 @@ static int tdx_sept_drop_private_spte(struct kvm *kvm, gfn_t gfn,
 		return -EIO;
 	}
 
+	tdx_set_page_present_level(hpa, level);
 	for (i = 0; i < KVM_PAGES_PER_HPAGE(level); i++) {
 		hpa_with_hkid = set_hkid_to_hpa(hpa, (u16)kvm_tdx->hkid);
 		do {
