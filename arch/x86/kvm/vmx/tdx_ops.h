@@ -170,9 +170,13 @@ static inline u64 tdh_mem_sept_add(struct kvm_tdx *kvm_tdx, gpa_t gpa,
 		.rdx = kvm_tdx->tdr_pa,
 		.r8 = page,
 	};
+	u64 r;
 
 	clflush_cache_range(__va(page), PAGE_SIZE);
-	return tdx_seamcall_sept(TDH_MEM_SEPT_ADD, &in, out);
+	r = tdx_seamcall_sept(TDH_MEM_SEPT_ADD, &in, out);
+	if (!r)
+		tdx_set_page_np(page);
+	return r;
 }
 
 static inline u64 tdh_mem_sept_rd(struct kvm_tdx *kvm_tdx, gpa_t gpa, int level,
