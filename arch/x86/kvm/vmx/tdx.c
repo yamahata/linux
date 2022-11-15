@@ -271,6 +271,7 @@ static int __tdx_reclaim_page(hpa_t pa)
 		return -EIO;
 	}
 
+	tdx_set_page_present_level(pa, PG_LEVEL_4K);
 	return 0;
 }
 
