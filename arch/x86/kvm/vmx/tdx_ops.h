@@ -7,6 +7,8 @@
 #include <linux/compiler.h>
 
 #include <asm/cacheflush.h>
+#include <asm/set_memory.h>
+#include <asm/tlbflush.h>
 #include <asm/asm.h>
 #include <asm/kvm_host.h>
 
@@ -50,6 +52,36 @@ static inline int pg_level_to_tdx_sept_level(enum pg_level level)
 	return level - 1;
 }
 
+static inline void tdx_set_page_np(hpa_t addr)
+{
+	if (!IS_ENABLED(CONFIG_INTEL_TDX_HOST_DEBUG_MEMORY_CORRUPT))
+		return;
+
+	/* set_page_np() doesn't work due to non-preemptive context. */
+	set_direct_map_invalid_noflush(pfn_to_page(addr >> PAGE_SHIFT));
+	preempt_disable();
+	__flush_tlb_all();
+	preempt_enable();
+	arch_flush_lazy_mmu_mode();
+}
+
+static inline void tdx_set_page_present(hpa_t addr)
+{
+	if (IS_ENABLED(CONFIG_INTEL_TDX_HOST_DEBUG_MEMORY_CORRUPT))
+		set_direct_map_default_noflush(pfn_to_page(addr >> PAGE_SHIFT));
+}
+
+static inline void tdx_set_page_present_level(hpa_t addr, enum pg_level pg_level)
+{
+	int i;
+
+	if (!IS_ENABLED(CONFIG_INTEL_TDX_HOST_DEBUG_MEMORY_CORRUPT))
+		return;
+
+	for (i = 0; i < KVM_PAGES_PER_HPAGE(pg_level); i++)
+		set_direct_map_default_noflush(pfn_to_page((addr >> PAGE_SHIFT) + i));
+}
+
 /*
  * TDX module acquires its internal lock for resources.  It doesn't spin to get
  * locks because of its restrictions of allowed execution time.  Instead, it
@@ -86,9 +118,13 @@ static inline u64 tdh_mng_addcx(struct kvm_tdx *kvm_tdx, hpa_t addr)
 		.rcx = addr,
 		.rdx = kvm_tdx->tdr_pa,
 	};
+	u64 r;
 
 	clflush_cache_range(__va(addr), PAGE_SIZE);
-	return tdx_seamcall(TDH_MNG_ADDCX, &in, NULL);
+	r = tdx_seamcall(TDH_MNG_ADDCX, &in, NULL);
+	if (!r)
+		tdx_set_page_np(addr);
+	return r;
 }
 
 static inline u64 tdh_mem_page_add(struct kvm_tdx *kvm_tdx, gpa_t gpa,
@@ -148,9 +184,13 @@ static inline u64 tdh_vp_addcx(struct vcpu_tdx *tdx, hpa_t addr)
 		.rcx = addr,
 		.rdx = tdx->tdvpr_pa,
 	};
+	u64 r;
 
 	clflush_cache_range(__va(addr), PAGE_SIZE);
-	return tdx_seamcall(TDH_VP_ADDCX, &in, NULL);
+	r = tdx_seamcall(TDH_VP_ADDCX, &in, NULL);
+	if (!r)
+		tdx_set_page_np(addr);
+	return r;
 }
 
 static inline u64 tdh_mem_page_relocate(struct kvm_tdx *kvm_tdx, gpa_t gpa,
@@ -205,9 +245,13 @@ static inline u64 tdh_mng_create(struct kvm_tdx *kvm_tdx, int hkid)
 		.rcx = kvm_tdx->tdr_pa,
 		.rdx = hkid,
 	};
+	u64 r;
 
 	clflush_cache_range(__va(kvm_tdx->tdr_pa), PAGE_SIZE);
-	return tdx_seamcall(TDH_MNG_CREATE, &in, NULL);
+	r = tdx_seamcall(TDH_MNG_CREATE, &in, NULL);
+	if (!r)
+		tdx_set_page_np(kvm_tdx->tdr_pa);
+	return r;
 }
 
 static inline u64 tdh_vp_create(struct vcpu_tdx *tdx)
@@ -216,9 +260,13 @@ static inline u64 tdh_vp_create(struct vcpu_tdx *tdx)
 		.rcx = tdx->tdvpr_pa,
 		.rdx = to_kvm_tdx(tdx->vcpu.kvm)->tdr_pa,
 	};
+	u64 r;
 
 	clflush_cache_range(__va(tdx->tdvpr_pa), PAGE_SIZE);
-	return tdx_seamcall(TDH_VP_CREATE, &in, NULL);
+	r = tdx_seamcall(TDH_VP_CREATE, &in, NULL);
+	if (!r)
+		tdx_set_page_np(tdx->tdvpr_pa);
+	return r;
 }
 
 static inline u64 tdh_mng_rd(struct kvm_tdx *kvm_tdx, u64 field,
