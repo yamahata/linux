@@ -4606,6 +4606,12 @@ static int direct_page_fault(struct kvm_vcpu *vcpu, struct kvm_page_fault *fault
 	if (r != RET_PF_CONTINUE)
 		return r;
 
+	if (fault->slot && fault->is_private) {
+		int i;
+
+		for (i = 0; i < KVM_PAGES_PER_HPAGE(fault->max_level); i++)
+			kvm_mmu_split_direct_map(pfn_to_page(fault->pfn + i));
+	}
 	r = RET_PF_RETRY;
 	write_lock(&vcpu->kvm->mmu_lock);
 
@@ -4715,6 +4721,13 @@ static int kvm_tdp_mmu_page_fault(struct kvm_vcpu *vcpu,
 	r = kvm_faultin_pfn(vcpu, fault, ACC_ALL);
 	if (r != RET_PF_CONTINUE)
 		return r;
+
+	if (fault->slot && fault->is_private) {
+		int i;
+
+		for (i = 0; i < KVM_PAGES_PER_HPAGE(fault->max_level); i++)
+			kvm_mmu_split_direct_map(pfn_to_page(fault->pfn + i));
+	}
 
 	r = __kvm_tdp_mmu_page_fault(vcpu, fault);
 	kvm_tdp_mmu_release_pfn(vcpu, fault->pfn);

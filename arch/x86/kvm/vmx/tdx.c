@@ -1594,6 +1594,7 @@ static int tdx_sept_drop_private_spte(struct kvm *kvm, gfn_t gfn,
 		err = tdx_reclaim_td_page(kvm, hpa, level);
 		if (KVM_BUG_ON(err, kvm))
 			return -EIO;
+		tdx_set_page_present_level(hpa, level);
 		tdx_unpin(kvm, pfn);
 		return 0;
 	}
@@ -1641,6 +1642,8 @@ static int tdx_sept_drop_private_spte(struct kvm *kvm, gfn_t gfn,
 		pr_tdx_error(TDH_PHYMEM_PAGE_WBINVD, err, NULL);
 		return -EIO;
 	}
+
+	tdx_set_page_present_level(hpa, level);
 	tdx_clear_page(hpa);
 	tdx_unpin(kvm, pfn);
 	return 0;

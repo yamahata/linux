@@ -65,6 +65,21 @@ static inline void tdx_set_page_np(hpa_t addr)
 	arch_flush_lazy_mmu_mode();
 }
 
+static inline void tdx_set_page_np_level(hpa_t addr, enum pg_level pg_level)
+{
+	int i;
+
+	if (!IS_ENABLED(CONFIG_INTEL_TDX_HOST_DEBUG_MEMORY_CORRUPT))
+		return;
+
+	for (i = 0; i < KVM_PAGES_PER_HPAGE(pg_level); i++)
+		set_direct_map_invalid_noflush(pfn_to_page((addr >> PAGE_SHIFT) + i));
+	preempt_disable();
+	__flush_tlb_all();
+	preempt_enable();
+	arch_flush_lazy_mmu_mode();
+}
+
 static inline void tdx_set_page_present(hpa_t addr)
 {
 	if (IS_ENABLED(CONFIG_INTEL_TDX_HOST_DEBUG_MEMORY_CORRUPT))
@@ -137,9 +152,13 @@ static inline u64 tdh_mem_page_add(struct kvm_tdx *kvm_tdx, gpa_t gpa,
 		.r8 = hpa,
 		.r9 = source,
 	};
+	u64 r;
 
 	clflush_cache_range(__va(hpa), PAGE_SIZE);
-	return tdx_seamcall_sept(TDH_MEM_PAGE_ADD, &in, out);
+	r = tdx_seamcall_sept(TDH_MEM_PAGE_ADD, &in, out);
+	if (!r)
+		tdx_set_page_np_level(hpa, PG_LEVEL_4K);
+	return r;
 }
 
 static inline u64 tdh_mem_sept_add(struct kvm_tdx *kvm_tdx, gpa_t gpa,
@@ -214,9 +233,13 @@ static inline u64 tdh_mem_page_aug(struct kvm_tdx *kvm_tdx, gpa_t gpa, hpa_t hpa
 		.rdx = kvm_tdx->tdr_pa,
 		.r8 = hpa,
 	};
+	u64 r;
 
 	clflush_cache_range(__va(hpa), PAGE_SIZE);
-	return tdx_seamcall_sept(TDH_MEM_PAGE_AUG, &in, out);
+	r = tdx_seamcall_sept(TDH_MEM_PAGE_AUG, &in, out);
+	if (!r)
+		tdx_set_page_np_level(hpa, PG_LEVEL_4K);
+	return r;
 }
 
 static inline u64 tdh_mem_range_block(struct kvm_tdx *kvm_tdx, gpa_t gpa,
