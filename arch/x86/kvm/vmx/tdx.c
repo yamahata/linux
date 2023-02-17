@@ -48,6 +48,8 @@ struct tdx_info {
 	u64 xfam_fixed0;
 	u64 xfam_fixed1;
 
+	u16 max_vcpus_per_td;
+
 	u16 num_cpuid_config;
 	/* This must the last member. */
 	DECLARE_FLEX_ARRAY(struct kvm_tdx_cpuid_config, cpuid_configs);
@@ -55,6 +57,35 @@ struct tdx_info {
 
 /* Info about the TDX module. */
 static struct tdx_info *tdx_info;
+
+int tdx_vm_enable_cap(struct kvm *kvm, struct kvm_enable_cap *cap)
+{
+	int r;
+
+	switch (cap->cap) {
+	case KVM_CAP_MAX_VCPUS: {
+		if (cap->flags || cap->args[0] == 0)
+			return -EINVAL;
+		if (cap->args[0] > KVM_MAX_VCPUS ||
+		    cap->args[0] > tdx_info->max_vcpus_per_td)
+			return -E2BIG;
+
+		mutex_lock(&kvm->lock);
+		if (kvm->created_vcpus)
+			r = -EBUSY;
+		else {
+			kvm->max_vcpus = cap->args[0];
+			r = 0;
+		}
+		mutex_unlock(&kvm->lock);
+		break;
+	}
+	default:
+		r = -EINVAL;
+		break;
+	}
+	return r;
+}
 
 static int tdx_get_capabilities(struct kvm_tdx_cmd *cmd)
 {
@@ -187,6 +218,7 @@ static int tdx_md_read(struct tdx_md_map *maps, int nr_maps)
 static int __init tdx_module_setup(void)
 {
 	u16 num_cpuid_config;
+	u64 tmp;
 	int ret;
 	u32 i;
 
@@ -218,6 +250,16 @@ static int __init tdx_module_setup(void)
 	if (!tdx_info)
 		return -ENOMEM;
 	tdx_info->num_cpuid_config = num_cpuid_config;
+
+	/*
+	 * TDX module may not support MD_FIELD_ID_MAX_VCPUS_PER_TD depending
+	 * on its version.
+	 */
+	tdx_info->max_vcpus_per_td = TDX_MAX_VCPUS;
+	if (!tdx_sys_metadata_field_read(MD_FIELD_ID_MAX_VCPUS_PER_TD, &tmp)) {
+		memcpy(&tdx_info->max_vcpus_per_td, &tmp,
+		       sizeof(tdx_info->max_vcpus_per_td));
+	}
 
 	ret = tdx_sys_metadata_read(fields, ARRAY_SIZE(fields), tdx_info);
 	if (ret)
