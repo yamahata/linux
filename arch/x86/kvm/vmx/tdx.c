@@ -1484,6 +1484,14 @@ static int tdx_mem_page_aug(struct kvm *kvm, gfn_t gfn,
 				       TDX_TD_ATTR_SEPT_VE_DISABLE));
 			return -EAGAIN;
 		}
+
+		/* Someone updated the entry to the same value. */
+		if (level_state.level == tdx_level &&
+		    level_state.state == TDX_SEPT_PRESENT &&
+		    entry.leaf && entry.pfn == pfn) {
+			tdx_unpin(kvm, pfn);
+			return -EAGAIN;
+		}
 	}
 	if (err) {
 		pr_tdx_error(TDH_MEM_PAGE_AUG, err, &out);
@@ -1664,6 +1672,20 @@ static int tdx_sept_link_private_spt(struct kvm *kvm, gfn_t gfn,
 	err = tdh_mem_sept_add(kvm_tdx->tdr_pa, gpa, tdx_level, hpa, &out);
 	if (unlikely(err == TDX_ERROR_SEPT_BUSY))
 		return -EAGAIN;
+	if (unlikely(err == (TDX_EPT_ENTRY_STATE_INCORRECT | TDX_OPERAND_ID_RCX))) {
+		union tdx_sept_entry entry = {
+			.raw = out.rcx,
+		};
+		union tdx_sept_level_state level_state = {
+			.raw = out.rdx,
+		};
+
+		/* someone updated the entry with same value. */
+		if (level_state.level == tdx_level &&
+		    level_state.state == TDX_SEPT_PRESENT &&
+		    !entry.leaf && entry.pfn == (hpa >> PAGE_SHIFT))
+			return -EAGAIN;
+	}
 	if (err) {
 		pr_tdx_error(TDH_MEM_SEPT_ADD, err, &out);
 		return -EIO;
@@ -1690,6 +1712,9 @@ static int tdx_sept_zap_private_spte(struct kvm *kvm, gfn_t gfn,
 	err = tdh_mem_range_block(kvm_tdx->tdr_pa, gpa, tdx_level, &out);
 	if (unlikely(err == TDX_ERROR_SEPT_BUSY))
 		return -EAGAIN;
+	if (unlikely(err == (TDX_GPA_RANGE_ALREADY_BLOCKED | TDX_OPERAND_ID_RCX)))
+		err = 0;
+
 	if (err) {
 		pr_tdx_error(TDH_MEM_RANGE_BLOCK, err, &out);
 		return -EIO;
