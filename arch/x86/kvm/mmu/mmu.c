@@ -3309,16 +3309,11 @@ static int kvm_handle_error_pfn(struct kvm_vcpu *vcpu, struct kvm_page_fault *fa
 	return -EFAULT;
 }
 
-static int kvm_handle_noslot_fault(struct kvm_vcpu *vcpu,
+static int __kvm_handle_noslot_fault(struct kvm_vcpu *vcpu,
 				   struct kvm_page_fault *fault,
 				   unsigned int access)
 {
 	gva_t gva = fault->is_tdp ? 0 : fault->addr;
-
-	if (fault->is_private) {
-		kvm_mmu_prepare_memory_fault_exit(vcpu, fault);
-		return -EFAULT;
-	}
 
 	vcpu_cache_mmio_info(vcpu, gva, fault->gfn,
 			     access & shadow_mmio_access_mask);
@@ -3347,6 +3342,18 @@ static int kvm_handle_noslot_fault(struct kvm_vcpu *vcpu,
 		return RET_PF_EMULATE;
 
 	return RET_PF_CONTINUE;
+}
+
+static int kvm_handle_noslot_fault(struct kvm_vcpu *vcpu,
+				   struct kvm_page_fault *fault,
+				   unsigned int access)
+{
+	if (fault->is_private) {
+		kvm_mmu_prepare_memory_fault_exit(vcpu, fault);
+		return -EFAULT;
+	}
+
+	return __kvm_handle_noslot_fault(vcpu, fault, access);
 }
 
 static bool page_fault_can_be_fast(struct kvm_page_fault *fault)
@@ -4400,23 +4407,38 @@ static int kvm_faultin_pfn(struct kvm_vcpu *vcpu, struct kvm_page_fault *fault,
 			   unsigned int access)
 {
 	struct kvm_memory_slot *slot = fault->slot;
+	bool force_mmio;
 	int ret;
 
 	fault->mmu_seq = vcpu->kvm->mmu_invalidate_seq;
 	smp_rmb();
 
 	/*
+	 * !fault->slot means MMIO for SNP and TDX.  Don't require explicit GPA
+	 * conversion for MMIO because MMIO is assigned at the boot time.  Fall
+	 * to !is_private case to get pfn = KVM_PFN_NOSLOT.
+	 */
+	force_mmio = !slot &&
+		vcpu->kvm->arch.vm_type != KVM_X86_DEFAULT_VM &&
+		vcpu->kvm->arch.vm_type != KVM_X86_SW_PROTECTED_VM;
+
+	/*
 	 * Check for a private vs. shared mismatch *after* taking a snapshot of
 	 * mmu_invalidate_seq, as changes to gfn attributes are guarded by the
 	 * invalidation notifier.
 	 */
-	if (fault->is_private != kvm_mem_is_private(vcpu->kvm, fault->gfn)) {
+	if (!force_mmio &&
+	    fault->is_private != kvm_mem_is_private(vcpu->kvm, fault->gfn)) {
 		kvm_mmu_prepare_memory_fault_exit(vcpu, fault);
 		return -EFAULT;
 	}
 
-	if (unlikely(!slot))
-		return kvm_handle_noslot_fault(vcpu, fault, access);
+	if (unlikely(!slot)) {
+		if (force_mmio)
+			return __kvm_handle_noslot_fault(vcpu, fault, access);
+		else
+			return kvm_handle_noslot_fault(vcpu, fault, access);
+	}
 
 	/*
 	 * Retry the page fault if the gfn hit a memslot that is being deleted
