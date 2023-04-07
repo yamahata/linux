@@ -1020,6 +1020,14 @@ static void vt_post_memory_mapping(struct kvm_vcpu *vcpu,
 	tdx_post_memory_mapping(vcpu, mapping);
 }
 
+static int vt_move_enc_context_from(struct kvm *kvm, unsigned int source_fd)
+{
+	if (!is_td(kvm))
+		return -ENOTTY;
+
+	return tdx_vm_move_enc_context_from(kvm, source_fd);
+}
+
 #define VMX_REQUIRED_APICV_INHIBITS				\
 	(BIT(APICV_INHIBIT_REASON_DISABLE)|			\
 	 BIT(APICV_INHIBIT_REASON_ABSENT) |			\
@@ -1186,6 +1194,7 @@ struct kvm_x86_ops vt_x86_ops __initdata = {
 	.gmem_max_level = vt_gmem_max_level,
 	.pre_memory_mapping = vt_pre_memory_mapping,
 	.post_memory_mapping = vt_post_memory_mapping,
+	.vm_move_enc_context_from = vt_move_enc_context_from,
 };
 
 struct kvm_x86_init_ops vt_init_ops __initdata = {
