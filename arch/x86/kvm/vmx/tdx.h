@@ -45,6 +45,8 @@ struct kvm_tdx {
 	/* For KVM_MEMORY_MAPPING */
 	struct mutex source_lock;
 	struct page *source_page;
+
+	atomic_t migration_in_progress;
 };
 
 union tdx_exit_reason {
