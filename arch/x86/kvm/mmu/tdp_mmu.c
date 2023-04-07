@@ -220,6 +220,23 @@ static void tdp_mmu_init_sp(struct kvm_mmu_page *sp, tdp_ptep_t sptep,
 	trace_kvm_mmu_get_page(sp, true);
 }
 
+static struct kvm_mmu_page *
+kvm_tdp_mmu_get_vcpu_root_no_alloc(struct kvm_vcpu *vcpu, union kvm_mmu_page_role role)
+{
+	struct kvm *kvm = vcpu->kvm;
+	struct kvm_mmu_page *root;
+
+	lockdep_assert_held(&kvm->mmu_lock);
+
+	list_for_each_entry(root, &kvm->arch.tdp_mmu_roots, link) {
+		if (root->role.word == role.word &&
+		    !WARN_ON_ONCE(!kvm_tdp_mmu_get_root(root)))
+			return root;
+	}
+
+	return NULL;
+}
+
 int kvm_tdp_mmu_alloc_root(struct kvm_vcpu *vcpu, bool private)
 {
 	struct kvm_mmu *mmu = vcpu->arch.mmu;
@@ -289,6 +306,76 @@ out_read_unlock:
 		mmu->root.pgd = 0;
 	}
 	return 0;
+}
+
+hpa_t kvm_tdp_mmu_move_private_pages_from(struct kvm_vcpu *vcpu,
+					  struct kvm_vcpu *src_vcpu)
+{
+	union kvm_mmu_page_role role = vcpu->arch.mmu->root_role;
+	struct kvm *kvm = vcpu->kvm;
+	struct kvm *src_kvm = src_vcpu->kvm;
+	struct kvm_mmu_page *private_root = NULL;
+	struct kvm_mmu_page *root;
+	s64 num_private_pages, old;
+
+	lockdep_assert_held_write(&vcpu->kvm->mmu_lock);
+	lockdep_assert_held_write(&src_vcpu->kvm->mmu_lock);
+
+	/* Find the private root of the source. */
+	kvm_mmu_page_role_set_private(&role);
+	for_each_tdp_mmu_root(src_kvm, root, kvm_mmu_role_as_id(role)) {
+		if (root->role.word == role.word) {
+			private_root = root;
+			break;
+		}
+	}
+	if (!private_root)
+		return INVALID_PAGE;
+
+	/* Remove the private root from the src kvm and add it to dst kvm. */
+	list_del_rcu(&private_root->link);
+	list_add_rcu(&private_root->link, &kvm->arch.tdp_mmu_roots);
+
+	num_private_pages = atomic64_read(&src_kvm->arch.tdp_private_mmu_pages);
+	old = atomic64_cmpxchg(&kvm->arch.tdp_private_mmu_pages, 0,
+			       num_private_pages);
+	/* The destination VM should have no private pages at this point. */
+	WARN_ON(old);
+	atomic64_set(&src_kvm->arch.tdp_private_mmu_pages, 0);
+
+	return __pa(private_root->spt);
+}
+
+/* The slimed down version of kvm_tdp_mmu_alloc_root() */
+hpa_t kvm_tdp_mmu_get_vcpu_root_hpa_no_alloc(struct kvm_vcpu *vcpu, bool private)
+{
+	union kvm_mmu_page_role role = vcpu->arch.mmu->root_role;
+	struct kvm *kvm = vcpu->kvm;
+	struct kvm_mmu_page *root;
+	int as_id = kvm_mmu_role_as_id(role);
+
+	lockdep_assert_held(&kvm->mmu_lock);
+
+	if (private)
+		kvm_mmu_page_role_set_private(&role);
+	for_each_valid_tdp_mmu_root_yield_safe(kvm, root, as_id) {
+		if (root->role.word == role.word)
+			goto out;
+	}
+
+	spin_lock(&kvm->arch.tdp_mmu_pages_lock);
+	list_for_each_entry(root, &kvm->arch.tdp_mmu_roots, link) {
+		if (root->role.word == role.word &&
+		    !WARN_ON_ONCE(!kvm_tdp_mmu_get_root(root)))
+			break;
+	}
+	spin_unlock(&kvm->arch.tdp_mmu_pages_lock);
+
+out:
+	if (!root)
+		return INVALID_PAGE;
+
+	return __pa(root->spt);
 }
 
 static void handle_changed_spte(struct kvm *kvm, int as_id, gfn_t gfn,
