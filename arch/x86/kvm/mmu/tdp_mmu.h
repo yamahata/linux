@@ -10,7 +10,20 @@
 void kvm_mmu_init_tdp_mmu(struct kvm *kvm);
 void kvm_mmu_uninit_tdp_mmu(struct kvm *kvm);
 
+#ifdef CONFIG_X86_64
 int kvm_tdp_mmu_alloc_root(struct kvm_vcpu *vcpu, bool private);
+hpa_t kvm_tdp_mmu_get_vcpu_root_hpa_no_alloc(struct kvm_vcpu *vcpu, bool private);
+hpa_t kvm_tdp_mmu_move_private_pages_from(struct kvm_vcpu *vcpu,
+					  struct kvm_vcpu *src_vcpu);
+#else
+static inline int kvm_tdp_mmu_alloc_root(struct kvm_vcpu *vcpu, bool private) { return -ENOMEM; };
+static inline hpa_t kvm_tdp_mmu_get_vcpu_root_hpa_no_alloc(struct kvm_vcpu *vcpu, bool private) { return INVALID_PAGE; };
+static inline hpa_t kvm_tdp_mmu_move_private_pages_from(struct kvm_vcpu *vcpu,
+					  struct kvm_vcpu *src_vcpu)
+{
+	return INVALID_PAGE;
+}
+#endif
 
 __must_check static inline bool kvm_tdp_mmu_get_root(struct kvm_mmu_page *root)
 {
