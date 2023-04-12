@@ -174,3 +174,11 @@ config VIRTIO_DMA_SHARED_BUFFER
 	 virtio resources.
 
 endif # VIRTIO_MENU
+
+config MINI_SOCK
+	tristate "Mini sock device"
+	help
+	 This module implements mimimal sock implementation for guest host
+	 communication.
+
+	 If unsure, say N.
