@@ -107,4 +107,32 @@ struct mini_sock_config_data {
 #define MINI_SOCK_POST		_IOWR(MINI_SOCK_TYPE, 0x0, struct mini_sock_hdr_pyld)
 #define MINI_SOCK_COMPLETE	_IOWR(MINI_SOCK_TYPE, 0x1, struct mini_sock_hdr_pyld *)
 
+struct mini_sock_addr {
+	/* For stream, SHUTDOWN, SEND, and RECV ignore cid and port. */
+	__le64 cid;
+	__le32 port;
+
+	union {
+		/* Socket type. DGRAM or STREAM for CONNECT and LISTEN. */
+		__le32 type;
+		/* For mini_sock_msg with SEND and RECV. */
+		__le32 len;
+		/* otherwise. */
+		__le32 reserved;
+	};
+} __attribute__((packed));
+
+struct mini_sock_msg {
+	struct mini_sock_addr addr;
+	void *payload;
+} __attribute__((packed));
+
+/* BSD socket-like API */
+#define MINI_SOCK_CONNECT	_IOW(MINI_SOCK_TYPE, 0x10, struct mini_sock_addr)
+#define MINI_SOCK_LISTEN	_IO(MINI_SOCK_TYPE, 0x11)
+#define MINI_SOCK_ACCEPT	_IOR(MINI_SOCK_TYPE, 0x12, struct mini_sock_addr)
+#define MINI_SOCK_SHUTDOWN	_IOW(MINI_SOCK_TYPE, 0x13, struct mini_sock_addr)
+#define MINI_SOCK_SEND		_IOWR(MINI_SOCK_TYPE, 0x14, struct mini_sock_msg)
+#define MINI_SOCK_RECV		_IOWR(MINI_SOCK_TYPE, 0x15, struct mini_sock_msg)
+
 #endif /* _UAPI_MINI_SOCK_H */

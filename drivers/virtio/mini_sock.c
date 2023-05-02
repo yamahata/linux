@@ -1438,6 +1438,47 @@ retry:
 	return -ENOENT;
 }
 
+static int mini_sock_ioctl_connect(struct mini_sock *msock,
+				   struct mini_sock_addr __user *uaddr)
+{
+	/* TODO */
+	return -ENOTSUPP;
+}
+
+static int mini_sock_ioctl_listen(struct mini_sock *msock)
+{
+	/* TODO */
+	return -ENOTSUPP;
+}
+
+static int mini_sock_ioctl_accept(struct mini_sock *msock,
+				  struct mini_sock_addr __user *uaddr)
+{
+	/* TODO */
+	return -ENOTSUPP;
+}
+
+static int mini_sock_ioctl_shutdown(struct mini_sock *msock,
+				    struct mini_sock_addr __user *uaddr)
+{
+	/* TODO */
+	return -ENOTSUPP;
+}
+
+static int mini_sock_ioctl_send(struct mini_sock *msock,
+				struct mini_sock_msg __user *umsg)
+{
+	/* TODO */
+	return -ENOTSUPP;
+}
+
+static int mini_sock_ioctl_recv(struct mini_sock *msock,
+				struct mini_sock_msg __user *umsg)
+{
+	/* TODO */
+	return -ENOTSUPP;
+}
+
 static long mini_sock_ioctl(struct file *filp, unsigned int ioctl,
 			    unsigned long arg)
 {
@@ -1453,6 +1494,33 @@ static long mini_sock_ioctl(struct file *filp, unsigned int ioctl,
 		struct mini_sock_hdr_pyld __user **uhdr_pyld_p =
 			(struct mini_sock_hdr_pyld __user **)arg;
 		return mini_sock_ioctl_complete(msock, uhdr_pyld_p);
+	}
+	case MINI_SOCK_CONNECT: {
+		struct mini_sock_addr __user *uaddr =
+			(struct mini_sock_addr __user *)arg;
+		return mini_sock_ioctl_connect(msock, uaddr);
+	}
+	case MINI_SOCK_LISTEN:
+		return mini_sock_ioctl_listen(msock);
+	case MINI_SOCK_ACCEPT: {
+		struct mini_sock_addr __user *uaddr =
+			(struct mini_sock_addr __user *)arg;
+		return mini_sock_ioctl_accept(msock, uaddr);
+	}
+	case MINI_SOCK_SHUTDOWN: {
+		struct mini_sock_addr __user *uaddr =
+			(struct mini_sock_addr __user *)arg;
+		return mini_sock_ioctl_shutdown(msock, uaddr);
+	}
+	case MINI_SOCK_SEND: {
+		struct mini_sock_msg __user *umsg =
+			(struct mini_sock_msg __user *)arg;
+		return mini_sock_ioctl_send(msock, umsg);
+	}
+	case MINI_SOCK_RECV: {
+		struct mini_sock_msg __user *umsg =
+			(struct mini_sock_msg __user *)arg;
+		return mini_sock_ioctl_recv(msock, umsg);
 	}
 	default:
 		return -EINVAL;
