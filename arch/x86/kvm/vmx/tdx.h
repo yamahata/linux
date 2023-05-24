@@ -31,6 +31,13 @@ struct kvm_tdx {
 
 	u64 tsc_offset;
 
+	/*
+	 * For KVM_SET_CPUID to check consistency. Remember the one passed to
+	 * TDH.MNG_INIT
+	 */
+	int cpuid_nent;
+	struct kvm_cpuid_entry2 *cpuid;
+
 	/* For KVM_MAP_MEMORY and KVM_TDX_INIT_MEM_REGION. */
 	atomic64_t nr_premapped;
 };
