@@ -546,6 +546,14 @@ static int handle_cpuid(struct pt_regs *regs, struct ve_info *ve)
 	};
 
 	/*
+	 * CPUID leaf 0x0b provides Extended Topology information.
+	 * CPUID leaf 0x1f provides V2 Extended Topology information.
+	 */
+	if (regs->ax == 0x0b || regs->ax == 0x1f) {
+		goto emulate_cpuids;
+	}
+
+	/*
 	 * Only allow VMM to control range reserved for hypervisor
 	 * communication.
 	 *
@@ -562,6 +570,7 @@ static int handle_cpuid(struct pt_regs *regs, struct ve_info *ve)
 	 * ABI can be found in TDX Guest-Host-Communication Interface
 	 * (GHCI), section titled "VP.VMCALL<Instruction.CPUID>".
 	 */
+emulate_cpuids:
 	if (__trace_tdx_hypercall_ret(&args))
 		return -EIO;
 
