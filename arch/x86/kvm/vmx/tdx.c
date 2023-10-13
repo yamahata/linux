@@ -3928,6 +3928,20 @@ static int tdx_td_finalizemr(struct kvm *kvm)
 	return 0;
 }
 
+static int tdx_vm_release_vm(struct kvm *kvm)
+{
+	struct kvm_tdx *kvm_tdx = to_kvm_tdx(kvm);
+	int idx, r;
+
+	if (!is_hkid_assigned(kvm_tdx) && !is_td_created(kvm_tdx))
+		return -ENODEV;
+
+	idx = srcu_read_lock(&kvm->srcu);
+	kvm_arch_flush_shadow_all(kvm);
+	srcu_read_unlock(&kvm->srcu, idx);
+	return 0;
+}
+
 int tdx_vm_ioctl(struct kvm *kvm, void __user *argp)
 {
 	struct kvm_tdx_cmd tdx_cmd;
@@ -3952,6 +3966,9 @@ int tdx_vm_ioctl(struct kvm *kvm, void __user *argp)
 		break;
 	case KVM_TDX_FINALIZE_VM:
 		r = tdx_td_finalizemr(kvm);
+		break;
+	case KVM_TDX_RELEASE_VM:
+		r = tdx_vm_release_vm(kvm);
 		break;
 	default:
 		r = -EINVAL;
