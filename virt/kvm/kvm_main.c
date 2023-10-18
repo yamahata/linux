@@ -6472,6 +6472,10 @@ int kvm_init(unsigned vcpu_size, unsigned vcpu_align, struct module *module)
 	if (r)
 		goto err_async_pf;
 
+	r = kvm_gmem_init();
+	if (r)
+		goto err_gmem;
+
 	kvm_chardev_ops.owner = module;
 
 	kvm_preempt_ops.sched_in = kvm_sched_in;
@@ -6498,6 +6502,8 @@ int kvm_init(unsigned vcpu_size, unsigned vcpu_align, struct module *module)
 err_register:
 	kvm_vfio_ops_exit();
 err_vfio:
+	kvm_gmem_exit();
+err_gmem:
 	kvm_async_pf_deinit();
 err_async_pf:
 	kvm_irqfd_exit();
