@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0
 #include <linux/cpu.h>
 #include <linux/mmu_context.h>
+#include <linux/misc_cgroup.h>
+#include <linux/pagemap.h>
 
 #include <asm/fpu/xcr.h>
 #include <asm/tdx.h>
@@ -1609,13 +1611,24 @@ static int tdx_sept_drop_private_spte(struct kvm *kvm, gfn_t gfn,
 		return -EINVAL;
 
 	if (unlikely(!is_hkid_assigned(kvm_tdx))) {
+		struct folio *folio = pfn_folio(pfn);
+
 		/*
 		 * The HKID assigned to this TD was already freed and cache
 		 * was already flushed. We don't have to flush again.
 		 */
-		err = tdx_reclaim_page(hpa);
-		if (KVM_BUG_ON(err, kvm))
+		err = __tdx_reclaim_page(hpa);
+		if (KVM_BUG_ON(err, kvm)) {
+			pr_err("%s:%d:%s gfn 0x%llx level 0x%x pfn 0x%llx\n",
+			       __FILE__, __LINE__, __func__, gfn, level, pfn);
 			return -EIO;
+		}
+		if (kvm_gmem_mapping(folio_mapping(folio)))
+			/* Let free_folio handle it. */
+			folio_clear_uptodate(folio);
+		else
+			tdx_clear_page(hpa);
+
 		tdx_unpin(kvm, pfn);
 		return 0;
 	}
@@ -3143,6 +3156,21 @@ static void __init vmx_off(void *_vmx_enabled)
 		vmx_hardware_disable();
 }
 
+static void tdx_free_folio(struct folio* folio)
+{
+	unsigned long pa;
+
+	if (folio_test_uptodate(folio))
+		return;
+
+	pa = folio_pfn(folio) << PAGE_SHIFT;
+	tdx_clear_page(pa);
+}
+
+static const struct kvm_arch_gmem_ops tdx_gmem_ops = {
+	.free_folio = tdx_free_folio,
+};
+
 int __init tdx_hardware_setup(struct kvm_x86_ops *x86_ops)
 {
 	struct vmx_tdx_enabled vmx_tdx = {
@@ -3231,6 +3259,7 @@ int __init tdx_hardware_setup(struct kvm_x86_ops *x86_ops)
 	x86_ops->remove_private_spte = tdx_sept_remove_private_spte;
 	x86_ops->zap_private_spte = tdx_sept_zap_private_spte;
 
+	kvm_gmem_register(&tdx_gmem_ops);
 	return 0;
 
 out:
