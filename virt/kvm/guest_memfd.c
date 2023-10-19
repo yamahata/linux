@@ -14,12 +14,17 @@
 
 static struct vfsmount *kvm_gmem_mnt;
 
+static int (*gmem_alloc_inode)(struct inode *inode);
+static void (*gmem_destroy_inode)(struct inode *inode);
+
 static void (*free_folio)(struct folio *);
 
 /* TODO: move this to kvm_init(). */
 void kvm_gmem_register(const struct kvm_arch_gmem_ops *ops)
 {
 	free_folio = ops->free_folio;
+	gmem_alloc_inode = ops->alloc_inode;
+	gmem_destroy_inode = ops->destroy_inode;
 }
 EXPORT_SYMBOL_GPL(kvm_gmem_register);
 
@@ -457,6 +462,11 @@ static int __kvm_gmem_create(struct kvm *kvm, loff_t size, u64 flags,
 	mapping_set_unmovable(inode->i_mapping);
 	/* Unmovable mappings are supposed to be marked unevictable as well. */
 	WARN_ON_ONCE(!mapping_unevictable(inode->i_mapping));
+	if (gmem_alloc_inode) {
+		err = gmem_alloc_inode(inode);
+		if (err)
+			goto err_inode;
+	}
 
 	fd = get_unused_fd_flags(0);
 	if (fd < 0) {
@@ -504,6 +514,8 @@ err_file:
 	fput(file);
 err_fd:
 	put_unused_fd(fd);
+	if (gmem_destroy_inode)
+		gmem_destroy_inode(inode);
 err_inode:
 	iput(inode);
 	return err;
@@ -687,6 +699,12 @@ out_fput:
 }
 EXPORT_SYMBOL_GPL(kvm_gmem_get_pfn);
 
+static void kvm_gmem_destroy_inode(struct inode *inode)
+{
+	if (gmem_destroy_inode)
+		gmem_destroy_inode(inode);
+}
+
 static int kvm_gmem_drop_inode(struct inode *inode)
 {
 	if (free_folio && !inode->i_mapping->nrpages)
@@ -698,6 +716,7 @@ static int kvm_gmem_drop_inode(struct inode *inode)
 
 static const struct super_operations kvm_gmem_sops = {
 	.statfs = simple_statfs,
+	.destroy_inode = kvm_gmem_destroy_inode,
 	.drop_inode = kvm_gmem_drop_inode,
 };
 
