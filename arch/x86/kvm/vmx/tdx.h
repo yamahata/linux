@@ -8,6 +8,13 @@
 #include "pmu_intel.h"
 #include "tdx_ops.h"
 
+struct kvm_tdx_tdr {
+	struct kref kref;
+
+	unsigned long tdr_pa;
+	struct rcu_head rcu;
+};
+
 struct kvm_tdx {
 	struct kvm kvm;
 
@@ -32,6 +39,9 @@ struct kvm_tdx {
 	atomic_t tdh_mem_track;
 
 	u64 tsc_offset;
+
+	/* To defer freeing TDR */
+	struct kvm_tdx_tdr *tdr;
 
 	/*
 	 * For KVM_SET_CPUID to check consistency. Remember the one passed to
