@@ -1778,6 +1778,7 @@ int security_inode_init_security_anon(struct inode *inode,
 	return call_int_hook(inode_init_security_anon, 0, inode, name,
 			     context_inode);
 }
+EXPORT_SYMBOL(security_inode_init_security_anon);
 
 #ifdef CONFIG_SECURITY_PATH
 /**
