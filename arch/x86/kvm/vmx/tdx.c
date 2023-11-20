@@ -4097,28 +4097,17 @@ static int tdx_vcpu_init_mtrr(struct kvm_vcpu *vcpu)
 	return 0;
 }
 
-int tdx_vcpu_ioctl(struct kvm_vcpu *vcpu, void __user *argp)
+static int tdx_vcpu_init_vcpu(struct kvm_vcpu *vcpu, u64 vcpu_rcx)
 {
-	struct msr_data apic_base_msr;
 	struct kvm_tdx *kvm_tdx = to_kvm_tdx(vcpu->kvm);
 	struct vcpu_tdx *tdx = to_tdx(vcpu);
-	struct kvm_tdx_cmd cmd;
+	struct msr_data apic_base_msr;
 	int ret;
-
-	if (tdx->initialized)
-		return -EINVAL;
 
 	if (!is_hkid_assigned(kvm_tdx) || is_td_finalized(kvm_tdx))
 		return -EINVAL;
 
-	if (copy_from_user(&cmd, argp, sizeof(cmd)))
-		return -EFAULT;
-
-	if (cmd.error)
-		return -EINVAL;
-
-	/* Currently only KVM_TDX_INTI_VCPU is defined for vcpu operation. */
-	if (cmd.flags || cmd.id != KVM_TDX_INIT_VCPU)
+	if (tdx->initialized)
 		return -EINVAL;
 
 	/*
@@ -4138,7 +4127,7 @@ int tdx_vcpu_ioctl(struct kvm_vcpu *vcpu, void __user *argp)
 	if (ret)
 		return ret;
 
-	ret = tdx_td_vcpu_init(vcpu, (u64)cmd.data);
+	ret = tdx_td_vcpu_init(vcpu, vcpu_rcx);
 	if (ret)
 		return ret;
 
@@ -4181,6 +4170,32 @@ int tdx_vcpu_ioctl(struct kvm_vcpu *vcpu, void __user *argp)
 
 	tdx->initialized = true;
 	return 0;
+}
+
+int tdx_vcpu_ioctl(struct kvm_vcpu *vcpu, void __user *argp)
+{
+	struct kvm_tdx_cmd cmd;
+	int ret;
+
+	if (copy_from_user(&cmd, argp, sizeof(cmd)))
+		return -EFAULT;
+
+	if (cmd.error)
+		return -EINVAL;
+
+	/* Currently flags isn't used . */
+	if (cmd.flags)
+		return -EINVAL;
+
+	switch (cmd.id) {
+	case KVM_TDX_INIT_VCPU:
+		ret = tdx_vcpu_init_vcpu(vcpu, (u64)cmd.data);
+		break;
+	default:
+		ret = -EINVAL;
+		break;
+	}
+	return ret;
 }
 
 int tdx_gmem_max_level(struct kvm *kvm, kvm_pfn_t pfn, gfn_t gfn,
