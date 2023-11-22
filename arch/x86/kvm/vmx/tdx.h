@@ -110,6 +110,7 @@ struct vcpu_tdx {
 	unsigned long *tdvpx_pa;
 	bool td_vcpu_created;
 
+	int loaded_cpu;
 	struct list_head cpu_list;
 
 	union {
