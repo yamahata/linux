@@ -7051,7 +7051,7 @@ void kvm_mmu_slot_leaf_clear_dirty(struct kvm *kvm,
 	 */
 }
 
-static void kvm_mmu_zap_all(struct kvm *kvm)
+static void __kvm_mmu_zap_all(struct kvm *kvm)
 {
 	struct kvm_mmu_page *sp, *node;
 	LIST_HEAD(invalid_list);
@@ -7070,9 +7070,19 @@ restart:
 
 	kvm_mmu_commit_zap_page(kvm, &invalid_list);
 
-	if (tdp_mmu_enabled)
-		kvm_tdp_mmu_zap_all(kvm);
+	write_unlock(&kvm->mmu_lock);
+}
 
+static void kvm_mmu_zap_all(struct kvm *kvm)
+{
+	if (!tdp_mmu_enabled) {
+		__kvm_mmu_zap_all(kvm);
+		return;
+	}
+
+	/* Supportes only TDP MMU */
+	write_lock(&kvm->mmu_lock);
+	kvm_tdp_mmu_zap_all(kvm);
 	write_unlock(&kvm->mmu_lock);
 }
 
