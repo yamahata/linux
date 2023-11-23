@@ -7127,9 +7127,7 @@ static void kvm_mmu_zap_all(struct kvm *kvm)
 	}
 
 	/* Supportes only TDP MMU */
-	write_lock(&kvm->mmu_lock);
 	kvm_tdp_mmu_zap_all(kvm);
-	write_unlock(&kvm->mmu_lock);
 }
 
 void kvm_arch_flush_shadow_all(struct kvm *kvm)
