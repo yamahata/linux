@@ -1099,8 +1099,9 @@ fastpath_t tdx_vcpu_run(struct kvm_vcpu *vcpu, bool force_immediate_exit)
 	struct kvm_tdx *kvm_tdx = to_kvm_tdx(vcpu->kvm);
 	struct vcpu_tdx *tdx = to_tdx(vcpu);
 
+	/* See tdx_handle_exit() to return error. */
 	if (unlikely(!tdx->initialized))
-		return -EINVAL;
+		return EXIT_FASTPATH_EXIT_HANDLED;
 	if (unlikely(vcpu->kvm->vm_bugged)) {
 		tdx->exit_reason.full = TDX_NON_RECOVERABLE_VCPU;
 		return EXIT_FASTPATH_NONE;
@@ -2667,6 +2668,10 @@ static int __tdx_handle_exit(struct kvm_vcpu *vcpu, fastpath_t fastpath)
 		return 0;
 	}
 
+	if (unlikely(fastpath == EXIT_FASTPATH_EXIT_HANDLED)) {
+		if (!to_tdx(vcpu)->initialized)
+			return -EINVAL;
+	}
 	WARN_ON_ONCE(fastpath != EXIT_FASTPATH_NONE);
 
 	switch (exit_reason.basic) {
