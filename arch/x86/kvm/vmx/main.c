@@ -29,6 +29,24 @@ static int vt_flush_remote_tlbs(struct kvm *kvm);
 static int vt_flush_remote_tlbs_range(struct kvm *kvm, gfn_t gfn, gfn_t nr_pages);
 #endif
 
+static int vt_hardware_enable(void)
+{
+	int ret;
+
+	ret = vmx_hardware_enable();
+	if (ret || !enable_tdx)
+		return ret;
+
+	ret = tdx_hardware_enable();
+	if (ret)
+		/*
+		 * In error case, we keep the CPU offline in error case.  So
+		 * need to revert VMXON.
+		 */
+		vmx_hardware_disable();
+	return ret;
+}
+
 static void vt_hardware_disable(void)
 {
 	/* Note, TDX *and* VMX need to be disabled if TDX is enabled. */
@@ -1100,8 +1118,7 @@ struct kvm_x86_ops vt_x86_ops __initdata = {
 	.hardware_unsetup = vt_hardware_unsetup,
 	.offline_cpu = tdx_offline_cpu,
 
-	/* TDX cpu enablement is done by tdx_hardware_setup(). */
-	.hardware_enable = vmx_hardware_enable,
+	.hardware_enable = vt_hardware_enable,
 	.hardware_disable = vt_hardware_disable,
 	.has_emulated_msr = vt_has_emulated_msr,
 

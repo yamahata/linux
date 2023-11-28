@@ -136,6 +136,7 @@ void vmx_setup_mce(struct kvm_vcpu *vcpu);
 int __init tdx_hardware_setup(struct kvm_x86_ops *x86_ops);
 void tdx_hardware_unsetup(void);
 void tdx_hardware_disable(void);
+int tdx_hardware_enable(void);
 int tdx_offline_cpu(void);
 
 int tdx_vm_enable_cap(struct kvm *kvm, struct kvm_enable_cap *cap);
@@ -213,6 +214,7 @@ int tdx_vm_move_enc_context_from(struct kvm *kvm, unsigned int source_fd);
 static inline int tdx_hardware_setup(struct kvm_x86_ops *x86_ops) { return -EOPNOTSUPP; }
 static inline void tdx_hardware_unsetup(void) {}
 static inline void tdx_hardware_disable(void) {}
+static inline int tdx_hardware_enable(void) { return -EOPNOTSUPP; }
 static inline int tdx_offline_cpu(void) { return 0; }
 
 static inline int tdx_vm_enable_cap(struct kvm *kvm, struct kvm_enable_cap *cap)
