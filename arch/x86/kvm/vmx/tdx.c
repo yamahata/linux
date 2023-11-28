@@ -64,6 +64,15 @@ struct tdx_info {
 	u8 nr_tdvpx_pages;
 	u16 max_vcpus_per_td;
 
+	/*
+	 * The number of WBINVD domains. 0 means that wbinvd domain is cpu
+	 * package.
+	 */
+	bool wbinvd_domains;
+	u16 num_wbinvd_domains;
+	u64 *wbinvd_domain_ids;
+	u64 *wbinvd_domain_masks;
+
 	u16 num_cpuid_config;
 	/* This must the last member. */
 	DECLARE_FLEX_ARRAY(struct kvm_tdx_cpuid_config, cpuid_configs);
@@ -71,6 +80,16 @@ struct tdx_info {
 
 /* Info about the TDX module. */
 static struct tdx_info *tdx_info;
+
+static void tdx_info_free(struct tdx_info *tdx_info)
+{
+	/* kfree accepts NULL. */
+	if (tdx_info) {
+		kfree(tdx_info->wbinvd_domain_ids);
+		kfree(tdx_info->wbinvd_domain_masks);
+	}
+	kfree(tdx_info);
+}
 
 int tdx_vm_enable_cap(struct kvm *kvm, struct kvm_enable_cap *cap)
 {
@@ -4486,6 +4505,49 @@ static int tdx_md_read(struct tdx_md_map *maps, int nr_maps)
 	return 0;
 }
 
+static int __init tdx_module_wbinvd_setup(void)
+{
+	u16 num_wbinvd_domains;
+	int d, ret;
+	u64 tmp;
+
+	tdx_info->wbinvd_domains = tdx_info->features0 & MD_FIELD_ID_FEATURES0_WBINVD_DOMAINS;
+	if (!tdx_info->wbinvd_domains)
+		return 0;
+
+	ret = tdx_sys_metadata_field_read(MD_FIELD_ID_WBINVD_DOMAINS_NUM, &tmp);
+	if (ret)
+		return ret;
+	num_wbinvd_domains = tmp;
+
+	tdx_info->num_wbinvd_domains = num_wbinvd_domains;
+	tdx_info->wbinvd_domain_ids = kcalloc(num_wbinvd_domains,
+					      sizeof(tdx_info->wbinvd_domain_ids[0]),
+					      GFP_KERNEL);
+	tdx_info->wbinvd_domain_masks = kcalloc(num_wbinvd_domains,
+						sizeof(tdx_info->wbinvd_domain_masks[0]),
+						GFP_KERNEL);
+	if (!tdx_info->wbinvd_domain_ids || !tdx_info->wbinvd_domain_masks)
+		return -ENOMEM;
+
+	for (d = 0; d < num_wbinvd_domains; d++) {
+		u64 id, mask;
+		struct tdx_md_map mds[] = {
+			TDX_MD_MAP(WBINVD_DOMAIN_IDS + d, &id),
+			TDX_MD_MAP(WBINVD_DOMAIN_MASKS + d, &mask),
+		};
+
+		ret = tdx_md_read(mds, ARRAY_SIZE(mds));
+		if (ret)
+			return ret;
+
+		tdx_info->wbinvd_domain_ids[d] = id;
+		tdx_info->wbinvd_domain_masks[d] = mask;
+	}
+
+	return 0;
+}
+
 #define TDX_INFO_MAP(_field_id, _member)			\
 	TD_SYSINFO_MAP(_field_id, struct tdx_info, _member)
 
@@ -4572,13 +4634,16 @@ static int __init tdx_module_setup(void)
 	}
 #endif
 
+	ret = tdx_module_wbinvd_setup();
+	if (ret)
+		goto error_out;
+
 	pr_info("nr_tdcs %d nr_tdvpx %d\n",
 		tdx_info->nr_tdcs_pages, tdx_info->nr_tdvpx_pages);
 	return 0;
 
 error_out:
-	/* kfree() accepts NULL. */
-	kfree(tdx_info);
+	tdx_info_free(tdx_info);
 	return ret;
 }
 
@@ -5196,7 +5261,7 @@ void tdx_hardware_unsetup(void)
 {
 	intel_release_lbr_buffers();
 	mce_unregister_decode_chain(&tdx_mce_nb);
-	kfree(tdx_info);
+	tdx_info_free(tdx_info);
 	kfree(tdx_mng_key_config_lock);
 	misc_cg_set_capacity(MISC_CG_RES_TDX, 0);
 	kvm_set_tdx_guest_pmi_handler(NULL);
