@@ -141,6 +141,7 @@ KVM_X86_OP_OPTIONAL(get_untagged_addr)
 KVM_X86_OP_OPTIONAL_RET0(gmem_prepare)
 KVM_X86_OP_OPTIONAL_RET0(gmem_validate_fault)
 KVM_X86_OP_OPTIONAL(gmem_invalidate)
+KVM_X86_OP_OPTIONAL_RET0(gmem_max_level)
 KVM_X86_OP_OPTIONAL(pre_mmu_map_page);
 
 #undef KVM_X86_OP
