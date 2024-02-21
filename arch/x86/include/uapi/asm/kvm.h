@@ -818,6 +818,13 @@ struct kvm_sev_receive_update_data {
 	__u32 pad2;
 };
 
+/* For KVM_COCO_INIT */
+struct kvm_sev_init_vm {
+	__u32 sev_fd;
+	__u32 pad;
+	struct kvm_sev_launch_start start;
+};
+
 #define KVM_X2APIC_API_USE_32BIT_IDS            (1ULL << 0)
 #define KVM_X2APIC_API_DISABLE_BROADCAST_QUIRK  (1ULL << 1)
 

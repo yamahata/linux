@@ -677,6 +677,8 @@ void avic_refresh_virtual_apic_mode(struct kvm_vcpu *vcpu);
 #define GHCB_VERSION_MIN	1ULL
 
 int sev_mem_enc_ioctl(struct kvm *kvm, void __user *argp);
+int sev_update_coco_vm(struct kvm *kvm, struct kvm_coco *update);
+int sev_update_coco_vcpu(struct kvm_vcpu *vcpu, struct kvm_coco *update);
 int sev_mem_enc_register_region(struct kvm *kvm,
 				struct kvm_enc_region *range);
 int sev_mem_enc_unregister_region(struct kvm *kvm,
