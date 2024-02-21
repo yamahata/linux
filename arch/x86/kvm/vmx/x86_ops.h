@@ -190,6 +190,8 @@ int tdx_skip_emulated_instruction(struct kvm_vcpu *vcpu);
 void tdx_set_interrupt_shadow(struct kvm_vcpu *vcpu, int mask);
 
 int tdx_vcpu_ioctl(struct kvm_vcpu *vcpu, void __user *argp);
+int tdx_update_protected_vm(struct kvm *kvm, struct kvm_update_protected *update);
+int tdx_update_protected_vcpu(struct kvm_vcpu *vcpu, struct kvm_update_protected *update);
 
 void tdx_flush_tlb(struct kvm_vcpu *vcpu);
 void tdx_flush_tlb_current(struct kvm_vcpu *vcpu);
@@ -276,6 +278,14 @@ static inline int tdx_skip_emulated_instruction(struct kvm_vcpu *vcpu) { return 
 static inline void tdx_set_interrupt_shadow(struct kvm_vcpu *vcpu, int mask) {}
 
 static inline int tdx_vcpu_ioctl(struct kvm_vcpu *vcpu, void __user *argp) { return -EOPNOTSUPP; }
+static inline int tdx_update_protected_vm(struct kvm *kvm, struct kvm_update_protected *update)
+{
+	return -EOPNOTSUPP;
+}
+static inline int tdx_update_protected_vcpu(struct kvm_vcpu *vcpu, struct kvm_update_protected *update)
+{
+	return -EOPNOTSUPP;
+}
 
 static inline void tdx_flush_tlb(struct kvm_vcpu *vcpu) {}
 static inline void tdx_flush_tlb_current(struct kvm_vcpu *vcpu) {}

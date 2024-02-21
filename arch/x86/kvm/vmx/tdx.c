@@ -4333,6 +4333,52 @@ int tdx_vcpu_ioctl(struct kvm_vcpu *vcpu, void __user *argp)
 	return ret;
 }
 
+int tdx_update_protected_vm(struct kvm *kvm, struct kvm_update_protected *update)
+{
+	int ret;
+
+	switch (update->cmd) {
+	case KVM_UPDATE_INIT: {
+		struct kvm_tdx_cmd cmd = {
+			.id = KVM_TDX_INIT_VM,
+			.flags = 0,
+			.data = update->data,
+			.error = 0,
+		};
+
+		ret = tdx_td_init(kvm, &cmd);
+		if (ret)
+			update->error = cmd.error;
+		break;
+	}
+	case KVM_UPDATE_FINALIZE:
+		ret = tdx_td_finalizemr(kvm);
+		break;
+	default:
+		ret = -EOPNOTSUPP;
+		break;
+	}
+
+	return ret;
+}
+
+int tdx_update_protected_vcpu(struct kvm_vcpu *vcpu,
+			      struct kvm_update_protected *update)
+{
+	int ret;
+
+	switch (update->cmd) {
+	case KVM_UPDATE_INIT:
+		ret = tdx_vcpu_init_vcpu(vcpu, (u64)update->data);
+		break;
+	default:
+		ret = -EOPNOTSUPP;
+		break;
+	}
+
+	return ret;
+}
+
 int tdx_gmem_max_level(struct kvm *kvm, kvm_pfn_t pfn, gfn_t gfn,
 		       bool is_private, u8 *max_level)
 {
