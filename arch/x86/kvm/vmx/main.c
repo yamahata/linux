@@ -1033,6 +1033,22 @@ static int vt_vcpu_mem_enc_ioctl(struct kvm_vcpu *vcpu, void __user *argp)
 	return tdx_vcpu_ioctl(vcpu, argp);
 }
 
+static int vt_update_coco_vm(struct kvm *kvm, struct kvm_coco *update)
+{
+	if (!is_td(kvm))
+		return -EINVAL;
+
+	return tdx_update_coco_vm(kvm, update);
+}
+
+static int vt_update_coco_vcpu(struct kvm_vcpu *vcpu, struct kvm_coco *update)
+{
+	if (!is_td_vcpu(vcpu))
+		return -EINVAL;
+
+	return tdx_update_coco_vcpu(vcpu, update);
+}
+
 static int vt_gmem_max_level(struct kvm *kvm, kvm_pfn_t pfn, gfn_t gfn,
 			     bool is_private, u8 *max_level)
 {
@@ -1242,6 +1258,8 @@ struct kvm_x86_ops vt_x86_ops __initdata = {
 
 	.mem_enc_ioctl = vt_mem_enc_ioctl,
 	.vcpu_mem_enc_ioctl = vt_vcpu_mem_enc_ioctl,
+	.update_coco_vm = vt_update_coco_vm,
+	.update_coco_vcpu = vt_update_coco_vcpu,
 
 	.gmem_max_level = vt_gmem_max_level,
 	.pre_memory_mapping = vt_pre_memory_mapping,

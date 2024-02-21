@@ -962,6 +962,11 @@ struct kvm_tdx_init_vm {
 	struct kvm_cpuid2 cpuid;
 };
 
+/* For vcpu KVM_UPDATE_COCO, KVM_COCO_INIT. */
+struct kvm_coco_init_tdx_vcpu {
+	__u64 rcx;
+};
+
 struct kvm_rw_memory {
 	/* This can be GPA or HVA */
 	__u64 addr;

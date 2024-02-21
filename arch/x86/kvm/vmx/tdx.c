@@ -4342,6 +4342,67 @@ int tdx_vcpu_ioctl(struct kvm_vcpu *vcpu, void __user *argp)
 	return ret;
 }
 
+int tdx_update_coco_vm(struct kvm *kvm, struct kvm_coco *update)
+{
+	int ret;
+
+	switch (update->cmd) {
+	case KVM_COCO_INIT: {
+		struct kvm_tdx_cmd cmd = {
+			.id = KVM_TDX_INIT_VM,
+			.flags = 0,
+			.data = update->data,
+			.error = 0,
+		};
+
+		ret = tdx_td_init(kvm, &cmd);
+		if (ret)
+			update->error = cmd.error;
+		break;
+	}
+	case KVM_COCO_MEMORY:
+		struct kvm_memory_mapping __user *mapping =
+			u64_to_user_ptr(update->data);
+
+		ret = __tdx_extend_memory(kvm, mapping);
+		break;
+	case KVM_COCO_FIN:
+		if (update->data)
+			return -EINVAL;
+		ret = tdx_td_finalizemr(kvm);
+		break;
+	default:
+		ret = -EOPNOTSUPP;
+		break;
+	}
+
+	return ret;
+}
+
+int tdx_update_coco_vcpu(struct kvm_vcpu *vcpu, struct kvm_coco *update)
+{
+	int ret;
+
+	switch (update->cmd) {
+	case KVM_COCO_INIT: {
+		struct kvm_coco_init_tdx_vcpu init_vcpu;
+
+		ret = -EFAULT;
+		if (copy_from_user(&init_vcpu, u64_to_user_ptr(update->data),
+				   sizeof(init_vcpu)))
+			break;
+
+		ret = tdx_vcpu_init_vcpu(vcpu, init_vcpu.rcx);
+		break;
+	}
+	default:
+		ret = -EOPNOTSUPP;
+		break;
+	}
+
+	return ret;
+}
+
 int tdx_gmem_max_level(struct kvm *kvm, kvm_pfn_t pfn, gfn_t gfn,
 		       bool is_private, u8 *max_level)
 {
