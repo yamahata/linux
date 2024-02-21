@@ -4812,6 +4812,16 @@ int kvm_vm_ioctl_check_extension(struct kvm *kvm, long ext)
 		    kvm_x86_ops.mem_enc_write_memory)
 			r = 1;
 		break;
+	case KVM_CAP_PROTECTED:
+		if (kvm) {
+			if (kvm->arch.vm_type == KVM_X86_SEV_VM ||
+			    kvm->arch.vm_type == KVM_X86_SEV_ES_VM ||
+			    kvm->arch.vm_type == KVM_X86_TDX_VM)
+				r = 1;
+		} else if (kvm_x86_ops.update_protected_vm ||
+			   kvm_x86_ops.update_protected_vcpu)
+			r = 1;
+		break;
 	default:
 		break;
 	}
@@ -6357,6 +6367,24 @@ long kvm_arch_vcpu_ioctl(struct file *filp,
 			goto out;
 		r = kvm_x86_ops.vcpu_mem_enc_ioctl(vcpu, argp);
 		break;
+	case KVM_UPDATE_PROTECTED: {
+		struct kvm_update_protected update;
+
+		if (!kvm_x86_ops.update_protected_vcpu) {
+			r = -EOPNOTSUPP;
+			break;
+		}
+		if (copy_from_user(&update, argp, sizeof(update))) {
+			r = -EFAULT;
+			break;
+		}
+		if (update.flags || update.error) {
+			r = -EINVAL;
+			break;
+		}
+		r = kvm_x86_ops.update_protected_vcpu(vcpu, &update);
+		break;
+	}
 	default:
 		r = -EINVAL;
 	}
@@ -7451,6 +7479,26 @@ set_pit2_out:
 			return -EFAULT;
 
 		r = kvm_vm_ioctl_set_msr_filter(kvm, &filter);
+		break;
+	}
+	case KVM_UPDATE_PROTECTED: {
+		struct kvm_update_protected update;
+
+		if (!kvm_x86_ops.update_protected_vm) {
+			r = -EOPNOTSUPP;
+			break;
+		}
+		if (copy_from_user(&update, argp, sizeof(update))) {
+			r = -EFAULT;
+			break;
+		}
+		if (update.flags || update.error) {
+			r = -EINVAL;
+			break;
+		}
+		r = kvm_x86_ops.update_protected_vm(kvm, &update);
+		if (copy_to_user(argp, &update, sizeof(update)))
+			r = -EFAULT;
 		break;
 	}
 	default:
