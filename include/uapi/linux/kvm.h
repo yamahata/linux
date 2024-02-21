@@ -1714,4 +1714,12 @@ struct kvm_update_protected {
 	__u64 data;
 };
 
+/* SEV */
+struct kvm_sev_update_init_vm
+{
+	__u32 sev_fd;
+	__u32 pad;
+	struct kvm_sev_launch_start start;
+};
+
 #endif /* __LINUX_KVM_H */
