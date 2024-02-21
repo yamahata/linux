@@ -1885,6 +1885,8 @@ struct kvm_x86_ops {
 	int (*mem_enc_read_memory)(struct kvm *kvm, struct kvm_rw_memory *argp);
 	int (*mem_enc_write_memory)(struct kvm *kvm, struct kvm_rw_memory *argp);
 	void (*guest_memory_reclaimed)(struct kvm *kvm);
+	int (*update_coco_vm)(struct kvm *kvm, struct kvm_coco *update);
+	int (*update_coco_vcpu)(struct kvm_vcpu *vcpu, struct kvm_coco *update);
 
 	int (*get_msr_feature)(struct kvm_msr_entry *entry);
 
