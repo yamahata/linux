@@ -541,11 +541,11 @@ static unsigned long get_num_contig_pages(unsigned long idx,
 	return pages;
 }
 
-static int sev_launch_update_data(struct kvm *kvm, struct kvm_sev_cmd *argp)
+static int __sev_launch_update_data(struct kvm *kvm, struct kvm_sev_launch_update_data *params,
+				    u32 *error)
 {
 	unsigned long vaddr, vaddr_end, next_vaddr, npages, pages, size, i;
 	struct kvm_sev_info *sev = &to_kvm_svm(kvm)->sev_info;
-	struct kvm_sev_launch_update_data params;
 	struct sev_data_launch_update_data data;
 	struct page **inpages;
 	int ret;
@@ -553,11 +553,8 @@ static int sev_launch_update_data(struct kvm *kvm, struct kvm_sev_cmd *argp)
 	if (!sev_guest(kvm))
 		return -ENOTTY;
 
-	if (copy_from_user(&params, (void __user *)(uintptr_t)argp->data, sizeof(params)))
-		return -EFAULT;
-
-	vaddr = params.uaddr;
-	size = params.len;
+	vaddr = params->uaddr;
+	size = params->len;
 	vaddr_end = vaddr + size;
 
 	/* Lock the user memory. */
@@ -590,7 +587,7 @@ static int sev_launch_update_data(struct kvm *kvm, struct kvm_sev_cmd *argp)
 
 		data.len = len;
 		data.address = __sme_page_pa(inpages[i]) + offset;
-		ret = sev_issue_cmd(kvm, SEV_CMD_LAUNCH_UPDATE_DATA, &data, &argp->error);
+		ret = sev_issue_cmd(kvm, SEV_CMD_LAUNCH_UPDATE_DATA, &data, error);
 		if (ret)
 			goto e_unpin;
 
@@ -606,6 +603,18 @@ e_unpin:
 	}
 	/* unlock the user pages */
 	sev_unpin_memory(kvm, inpages, npages);
+	return ret;
+}
+
+static int sev_launch_update_data(struct kvm *kvm, struct kvm_sev_cmd *argp)
+{
+	struct kvm_sev_launch_update_data params;
+	int ret;
+
+	if (copy_from_user(&params, (void __user *)(uintptr_t)argp->data, sizeof(params)))
+		return -EFAULT;
+
+	ret = __sev_launch_update_data(kvm, &params, &argp->error);
 	return ret;
 }
 
