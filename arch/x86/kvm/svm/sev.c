@@ -1872,6 +1872,140 @@ out:
 	return r;
 }
 
+int sev_update_protected_vm(struct kvm *kvm,
+			    struct kvm_update_protected *update)
+{
+	struct kvm_sev_cmd sev_cmd;
+	int r;
+
+	if (!sev_es_guest(kvm))
+		return -ENOTTY;
+
+	switch (update->cmd) {
+	case KVM_UPDATE_VENDOR: {
+		u32 id;
+		if (update->flags) {
+			r = -EINVAL;
+			break;
+		}
+		if (copy_from_user(&id, (void __user *)update->data, sizeof(id))) {
+			r = -EFAULT;
+			break;
+		}
+
+		sev_cmd = (struct kvm_sev_cmd) {
+			.id = id,
+			.data = update->data,
+		};
+		switch (id) {
+		case KVM_SEV_LAUNCH_SECRET:
+			r = sev_launch_secret(kvm, &sev_cmd);
+			update->error = sev_cmd.error;
+			break;
+		case KVM_SEV_LAUNCH_MEASURE:
+			r = sev_launch_measure(kvm, &sev_cmd);
+			update->error = sev_cmd.error;
+			break;
+		default:
+			r = -EINVAL;
+			break;
+		}
+		break;
+	}
+	case KVM_UPDATE_INIT:
+		struct kvm_sev_update_init_vm init_vm;
+
+		if (update->flags) {
+			r = -EINVAL;
+			break;
+		}
+		if (copy_from_user(&init_vm, (void __user *)update->data,
+				   sizeof(init_vm))) {
+			r = -EFAULT;
+			break;
+		}
+		if (init_vm.pad) {
+			r = -EINVAL;
+			break;
+		}
+
+		sev_cmd = (struct kvm_sev_cmd) {
+			.data = update->data +
+			offsetof(struct kvm_sev_update_init_vm, start),
+			.sev_fd = init_vm.sev_fd,
+		};
+
+		r = sev_launch_start(kvm, &sev_cmd);
+		update->error = sev_cmd.error;
+		break;
+	case KVM_UPDATE_MEMORY: {
+		struct kvm_sev_launch_update_data params;
+		int error;
+
+		if (update->flags) {
+			r = -EINVAL;
+			break;
+		}
+		if (copy_from_user(&params, (void __user *)update->data,
+				   sizeof(params))) {
+			r = -EFAULT;
+			break;
+		}
+		r = __sev_launch_update_data(kvm, &params, &error);
+		update->error = error;
+		break;
+	}
+	case KVM_UPDATE_FINALIZE:
+		if (update->flags || update->data) {
+			r = -EINVAL;
+			break;
+		}
+		sev_cmd.error = 0;
+		r = sev_launch_finish(kvm, &sev_cmd);
+		update->error = sev_cmd.error;
+		break;
+	default:
+		r = -EINVAL;
+		break;
+	}
+
+	return r;
+}
+
+int sev_update_protected_vcpu(struct kvm_vcpu *vcpu,
+			      struct kvm_update_protected *update)
+{
+	int r;
+
+	if (!sev_es_guest(vcpu->kvm))
+		return -ENOTTY;
+
+	switch (update->cmd) {
+	case KVM_UPDATE_INIT: {
+		int error;
+
+		if (update->flags || update->data) {
+			r = -EINVAL;
+			break;
+		}
+		r = mutex_lock_killable(&vcpu->mutex);
+		if (r)
+			break;
+
+		r = __sev_launch_update_vmsa(vcpu->kvm, vcpu, &error);
+
+		mutex_unlock(&vcpu->mutex);
+		update->error = error;
+		break;
+	}
+	default:
+		r = -EINVAL;
+		break;
+	}
+
+	return r;
+}
+
 int sev_mem_enc_register_region(struct kvm *kvm,
 				struct kvm_enc_region *range)
 {
