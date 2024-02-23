@@ -6436,6 +6436,47 @@ updated to point the remaining range.
 
 The "flags" field is reserved for future extensions and must be '0'.
 
+4.144 KVM_UPDATE_COCO
+------------------------
+
+:Capability: KVM_CAP_COCO
+:Architectures: none
+:Type: vm ioctl, vcpu ioctl
+:Parameters: struct kvm_coco(in/out)
+:Returns: 0 on success, <0 on error
+
+KVM_UPADTE_COCO operates on confidential VM
+
+::
+
+  enum kvm_coco_cmd {
+        KVM_COCO_INIT,
+        KVM_COCO_MEMORY,
+        KVM_COCO_FIN,
+  };
+
+  struct kvm_coco {
+        __u64 cmd;
+        __u64 flags;
+        __u64 error;
+        __u64 data;
+  };
+
+KVM_UPDATE_COCO operates confidential VM. KVM_COCO_INIT for vm and vcpu starts
+initialization of confidential VM or vcpu with vendor specific data. data points
+to the vendor specific data or NULL if unnecessary.  It corresponds to
+KVM_SEV_LAUNCH_START with struct kvm_sev_launch_start and KVM_TDX_INIT_VM with
+struct kvm_tdx_init_vm, KVM_SEV_LAUNC_UPDATE_VMSA with struct
+kvm_sev_launc_update_vmsa, and KVM_TDX_INIT_VCPU with NULL.  KVM_COCO_MEMORY
+with struct kvm_memory_mapping corresponds to TDX KVM_TDX_EXTEND_MEMORY to
+extend measurement with memory contents.  KVM_COCO_FIN corresponds to
+KVM_SEV_LAUNCH_FINISH with NULL and KVM_TDX_FINALIZE_VM with NULL.
+
+flags is reserved for future use and must be zero.  The vendor code may store
+error with vendor specific error code when ioctl returns error.  When error
+occurs, vendor specific error code is useful to deduce the exact reason.
+data points to the vendor specific data or NULL.
+
 5. The kvm_run structure
 ========================
 
