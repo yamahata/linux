@@ -323,4 +323,7 @@ static inline gpa_t kvm_translate_gpa(struct kvm_vcpu *vcpu,
 		return gpa;
 	return translate_nested_gpa(vcpu, gpa, access, exception);
 }
+
+void kvm_mmu_map_memory_exact_level(const struct kvm_memory_mapping *mapping,
+				    u8 *max_level);
 #endif

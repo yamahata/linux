@@ -5827,16 +5827,77 @@ static int kvm_vcpu_ioctl_enable_cap(struct kvm_vcpu *vcpu,
 	}
 }
 
+void kvm_mmu_map_memory_exact_level(const struct kvm_memory_mapping *mapping,
+				    u8 *max_level)
+{
+	BUILD_BUG_ON(KVM_MAX_HUGEPAGE_LEVEL != PG_LEVEL_1G);
+
+	if (IS_ALIGNED(mapping->base_gfn, KVM_PAGES_PER_HPAGE(PG_LEVEL_1G)) &&
+	    mapping->nr_pages >= KVM_PAGES_PER_HPAGE(PG_LEVEL_1G))
+		*max_level = PG_LEVEL_1G;
+	else if (IS_ALIGNED(mapping->base_gfn, KVM_PAGES_PER_HPAGE(PG_LEVEL_2M)) &&
+		 mapping->nr_pages >= KVM_PAGES_PER_HPAGE(PG_LEVEL_2M))
+		*max_level = PG_LEVEL_2M;
+	else
+		*max_level = PG_LEVEL_4K;
+}
+EXPORT_SYMBOL_GPL(kvm_mmu_map_memory_exact_level);
+
+static int kvm_pre_mmu_map_page(struct kvm_vcpu *vcpu,
+				struct kvm_memory_mapping *mapping,
+				u64 *error_code, u8 *max_level)
+{
+	int r = 0;
+
+
+	if (vcpu->kvm->arch.vm_type == KVM_X86_DEFAULT_VM) {
+		if (mapping->source)
+			r = -EINVAL;
+	} else if (vcpu->kvm->arch.vm_type == KVM_X86_SW_PROTECTED_VM) {
+		if (mapping->source)
+			r = -EINVAL;
+		if (kvm_mem_is_private(vcpu->kvm, mapping->base_gfn))
+			*error_code |= PFERR_PRIVATE_ACCESS;
+	} else if (kvm_x86_ops.pre_mmu_map_page)
+		r = static_call(kvm_x86_pre_mmu_map_page)(vcpu, mapping,
+							  error_code,
+							  max_level);
+	else
+		r = -EOPNOTSUPP;
+
+	return r;
+}
+
+static void kvm_post_mmu_map_page(struct kvm_vcpu *vcpu,
+				  struct kvm_memory_mapping *mapping)
+{
+	if (vcpu->kvm->arch.vm_type == KVM_X86_DEFAULT_VM ||
+	    vcpu->kvm->arch.vm_type == KVM_X86_SW_PROTECTED_VM)
+		return;
+
+	if (kvm_x86_ops.post_mmu_map_page)
+		static_call(kvm_x86_post_mmu_map_page)(vcpu, mapping);
+}
+
 int kvm_arch_vcpu_map_memory(struct kvm_vcpu *vcpu,
 			     struct kvm_memory_mapping *mapping)
 {
 	u8 max_level = KVM_MAX_HUGEPAGE_LEVEL, goal_level = PG_LEVEL_4K;
-	u32 error_code = 0;
+	u64 error_code = 0;
 	int r;
 
 	kvm_mmu_reload(vcpu);
-	r = kvm_tdp_mmu_map_page(vcpu, gfn_to_gpa(mapping->base_gfn), error_code,
-				 max_level, &goal_level);
+	r = kvm_pre_mmu_map_page(vcpu, mapping, &error_code, &max_level);
+	if (r < 0)
+		return r;
+
+	if (r > 0)
+		/* The backend doesn't want to trigger fault handler. */
+		r = 0;
+	else
+		r = kvm_tdp_mmu_map_page(vcpu, gfn_to_gpa(mapping->base_gfn),
+					 error_code, max_level, &goal_level);
+	kvm_post_mmu_map_page(vcpu, mapping);
 	if (r)
 		return r;
 
