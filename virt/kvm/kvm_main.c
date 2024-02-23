@@ -4431,6 +4431,48 @@ static int kvm_vcpu_ioctl_get_stats_fd(struct kvm_vcpu *vcpu)
 	return fd;
 }
 
+__weak int kvm_arch_vcpu_map_memory(struct kvm_vcpu *vcpu,
+				    struct kvm_memory_mapping *mapping)
+{
+	return -EOPNOTSUPP;
+}
+
+static int kvm_vcpu_map_memory(struct kvm_vcpu *vcpu,
+			       struct kvm_memory_mapping *mapping)
+{
+	int idx, r;
+
+	if (mapping->flags)
+		return -EINVAL;
+
+	if (!PAGE_ALIGNED(mapping->base_address) ||
+	    !PAGE_ALIGNED(mapping->size) ||
+	    mapping->base_address + mapping->size <= mapping->base_address)
+		return -EINVAL;
+
+	vcpu_load(vcpu);
+	idx = srcu_read_lock(&vcpu->kvm->srcu);
+
+	r = 0;
+	while (mapping->size) {
+		if (signal_pending(current)) {
+			r = -EINTR;
+			break;
+		}
+
+		r = kvm_arch_vcpu_map_memory(vcpu, mapping);
+		if (r)
+			break;
+
+		cond_resched();
+	}
+
+	srcu_read_unlock(&vcpu->kvm->srcu, idx);
+	vcpu_put(vcpu);
+
+	return r;
+}
+
 static long kvm_vcpu_ioctl(struct file *filp,
 			   unsigned int ioctl, unsigned long arg)
 {
@@ -4630,6 +4672,18 @@ out_free1:
 	}
 	case KVM_GET_STATS_FD: {
 		r = kvm_vcpu_ioctl_get_stats_fd(vcpu);
+		break;
+	}
+	case KVM_MAP_MEMORY: {
+		struct kvm_memory_mapping mapping;
+
+		r = -EFAULT;
+		if (copy_from_user(&mapping, argp, sizeof(mapping)))
+			break;
+		r = kvm_vcpu_map_memory(vcpu, &mapping);
+		/* Don't check error to tell the processed range. */
+		if (copy_to_user(argp, &mapping, sizeof(mapping)))
+			r = -EFAULT;
 		break;
 	}
 	default:
