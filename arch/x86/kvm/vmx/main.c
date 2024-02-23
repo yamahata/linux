@@ -235,6 +235,16 @@ static int vt_gmem_max_level(struct kvm *kvm, kvm_pfn_t pfn, gfn_t gfn,
 	return 0;
 }
 
+static int vt_pre_mmu_map_page(struct kvm_vcpu *vcpu,
+			       struct kvm_memory_mapping *mapping,
+			       u64 *error_code)
+{
+	if (is_td_vcpu(vcpu))
+		return tdx_pre_mmu_map_page(vcpu, mapping, error_code);
+
+	return 0;
+}
+
 #define VMX_REQUIRED_APICV_INHIBITS				\
 	(BIT(APICV_INHIBIT_REASON_DISABLE)|			\
 	 BIT(APICV_INHIBIT_REASON_ABSENT) |			\
@@ -394,6 +404,7 @@ struct kvm_x86_ops vt_x86_ops __initdata = {
 	.vcpu_mem_enc_ioctl = vt_vcpu_mem_enc_ioctl,
 
 	.gmem_max_level = vt_gmem_max_level,
+	.pre_mmu_map_page = vt_pre_mmu_map_page,
 };
 
 struct kvm_x86_init_ops vt_init_ops __initdata = {
