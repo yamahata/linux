@@ -6352,6 +6352,47 @@ a single guest_memfd file, but the bound ranges must not overlap).
 
 See KVM_SET_USER_MEMORY_REGION2 for additional details.
 
+4.143 KVM_MAP_MEMORY
+------------------------
+
+:Capability: KVM_CAP_MAP_MEMORY
+:Architectures: none
+:Type: vcpu ioctl
+:Parameters: struct kvm_memory_mapping (in/out)
+:Returns: 0 on success, < 0 on error
+
+Errors:
+
+  ======   =============================================================
+  EINVAL   vcpu state is not in TDP MMU mode or is in guest mode.
+           Currently, this ioctl is restricted to TDP MMU.
+  EAGAIN   The region is only processed partially.  The caller should
+           issue the ioctl with the updated parameters.
+  EINTR    An unmasked signal is pending.  The region may be processed
+           partially.  If `size` > 0, the caller should issue the ioctl
+           with the updated parameters.
+  ======   =============================================================
+
+KVM_MAP_MEMORY populates guest memory before the VM starts to run.  Multiple
+vcpus can call this ioctl simultaneously.  It may result in the error of EAGAIN
+due to race conditions.
+
+::
+
+  struct kvm_memory_mapping {
+        __u64 base_address;
+	__u64 size;
+	__u64 flags;
+  };
+
+KVM_MAP_MEMORY populates guest memory at the specified range (`base_address`,
+`size`) in the underlying mapping.  `flags` must be zero.  It's reserved for
+future use.
+
+When the ioctl returns, the input values are updated.  If `size` is large, it
+may return EAGAIN or EINTR for pending signal, the ioctl updates the values
+(`base_address` and `size`.) to point to the remaining range.
+
 5. The kvm_run structure
 ========================
 
