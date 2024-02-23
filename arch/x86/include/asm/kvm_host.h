@@ -1816,6 +1816,10 @@ struct kvm_x86_ops {
 	int (*gmem_prepare)(struct kvm *kvm, kvm_pfn_t pfn, gfn_t gfn, int max_order);
 	void (*gmem_invalidate)(kvm_pfn_t start, kvm_pfn_t end);
 	int (*gmem_validate_fault)(struct kvm *kvm, kvm_pfn_t pfn, gfn_t gfn, u8 *max_level);
+
+	int (*pre_mmu_map_page)(struct kvm_vcpu *vcpu,
+				struct kvm_memory_mapping *mapping,
+				u64 *error_code);
 };
 
 struct kvm_x86_nested_ops {

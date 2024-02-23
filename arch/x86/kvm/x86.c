@@ -5878,6 +5878,26 @@ static int kvm_vcpu_ioctl_enable_cap(struct kvm_vcpu *vcpu,
 	}
 }
 
+static int kvm_pre_mmu_map_page(struct kvm_vcpu *vcpu,
+				struct kvm_memory_mapping *mapping,
+				u64 *error_code)
+{
+	int r = 0;
+
+	if (vcpu->kvm->arch.vm_type == KVM_X86_DEFAULT_VM) {
+		/* nothing */
+	} else if (vcpu->kvm->arch.vm_type == KVM_X86_SW_PROTECTED_VM) {
+		if (kvm_mem_is_private(vcpu->kvm, gpa_to_gfn(mapping->base_address)))
+			*error_code |= PFERR_PRIVATE_ACCESS;
+	} else if (kvm_x86_ops.pre_mmu_map_page)
+		r = static_call(kvm_x86_pre_mmu_map_page)(vcpu, mapping,
+							  error_code);
+	else
+		r = -EOPNOTSUPP;
+
+	return r;
+}
+
 int kvm_arch_vcpu_map_memory(struct kvm_vcpu *vcpu,
 			     struct kvm_memory_mapping *mapping)
 {
@@ -5886,6 +5906,14 @@ int kvm_arch_vcpu_map_memory(struct kvm_vcpu *vcpu,
 	int r;
 
 	kvm_mmu_reload(vcpu);
+	/*
+	 * Adjust error_code for VM-type. max_level is adjusted by
+	 * gmem_max_level() callback.
+	 */
+	r = kvm_pre_mmu_map_page(vcpu, mapping, &error_code);
+	if (r)
+		return r;
+
 	r = kvm_tdp_mmu_map_page(vcpu, mapping->base_address, error_code,
 				 &level);
 	if (r)
