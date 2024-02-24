@@ -23,8 +23,8 @@ static char *tdx_cmd_str[] = {
 	"KVM_TDX_CAPABILITIES",
 	"KVM_TDX_INIT_VM",
 	"KVM_TDX_INIT_VCPU",
-	"KVM_TDX_INIT_MEM_REGION",
-	"KVM_TDX_FINALIZE_VM"
+	"KVM_TDX_EXTEND_MEMORY",
+	"KVM_TDX_FINALIZE_VM",
 };
 #define TDX_MAX_CMD_STR (ARRAY_SIZE(tdx_cmd_str))
 
@@ -178,19 +178,29 @@ static void tdx_td_vcpu_init(struct kvm_vcpu *vcpu)
 static void tdx_init_mem_region(struct kvm_vm *vm, void *source_pages,
 				uint64_t gpa, uint64_t size)
 {
-	struct kvm_tdx_init_mem_region mem_region = {
-		.source_addr = (uint64_t)source_pages,
-		.gpa = gpa,
+	struct kvm_vcpu * vcpu = list_first_entry(&vm->vcpus,
+						  struct kvm_vcpu, list);
+	struct kvm_memory_mapping mapping = {
+		.base_gfn = gpa / PAGE_SIZE,
 		.nr_pages = size / PAGE_SIZE,
+		.source = (uint64_t)source_pages,
 	};
-	uint32_t metadata = KVM_TDX_MEASURE_MEMORY_REGION;
+	int r;
 
-	TEST_ASSERT((mem_region.nr_pages > 0) &&
-			    ((mem_region.nr_pages * PAGE_SIZE) == size),
+	TEST_ASSERT((mapping.nr_pages > 0) &&
+		    ((mapping.nr_pages * PAGE_SIZE) == size),
 		    "Cannot add partial pages to the guest memory.\n");
 	TEST_ASSERT(((uint64_t)source_pages & (PAGE_SIZE - 1)) == 0,
 		    "Source memory buffer is not page aligned\n");
-	tdx_ioctl(vm->fd, KVM_TDX_INIT_MEM_REGION, metadata, &mem_region);
+	r = ioctl(vcpu->fd, KVM_MAP_MEMORY, &mapping);
+	TEST_ASSERT(r == 0, "KVM_MAP_MEMORY failed: %d %d",
+		    r, errno);
+
+	mapping = (struct kvm_memory_mapping) {
+		.base_gfn = gpa / PAGE_SIZE,
+		.nr_pages = size / PAGE_SIZE,
+	};
+	tdx_ioctl(vm->fd, KVM_TDX_EXTEND_MEMORY, 0, &mapping);
 }
 
 static void tdx_td_finalizemr(struct kvm_vm *vm)
@@ -230,7 +240,7 @@ static void tdx_enable_capabilities(struct kvm_vm *vm)
 		      KVM_X2APIC_API_USE_32BIT_IDS |
 			      KVM_X2APIC_API_DISABLE_BROADCAST_QUIRK);
 	vm_enable_cap(vm, KVM_CAP_SPLIT_IRQCHIP, 24);
-	vm_enable_cap(vm, KVM_CAP_MAX_VCPUS, 1024);
+	vm_enable_cap(vm, KVM_CAP_MAX_VCPUS, 512);
 }
 
 static void tdx_configure_memory_encryption(struct kvm_vm *vm)
