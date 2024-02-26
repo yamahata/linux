@@ -693,8 +693,10 @@ void __init sev_set_cpu_caps(void);
 void __init sev_hardware_setup(void);
 void sev_hardware_unsetup(void);
 int sev_cpu_init(struct svm_cpu_data *sd);
+int sev_dev_get_attr(u64 attr, u64 *val);
 extern unsigned int max_sev_asid;
 #else
+static inline int sev_dev_get_attr(u64 attr, u64 *val) { return -ENXIO; }
 static inline void sev_free_vcpu(struct kvm_vcpu *vcpu) {}
 static inline void sev_vm_destroy(struct kvm *kvm) {}
 static inline void __init sev_set_cpu_caps(void) {}
