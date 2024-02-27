@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
 #define _GNU_SOURCE
-#include <asm/kvm.h>
-#include <asm/kvm_host.h>
 #include <errno.h>
 #include <linux/kvm.h>
 #include <stdint.h>
@@ -250,8 +248,6 @@ static void tdx_configure_memory_encryption(struct kvm_vm *vm)
 	vm->arch.c_bit = 0;
 	/* Set gpa_protected_mask so that tagging/untagging of GPAs works */
 	vm->gpa_protected_mask = vm->arch.s_bit;
-	/* This VM is protected (has memory encryption) */
-	vm->protected = true;
 }
 
 static void tdx_apply_cr4_restrictions(struct kvm_sregs *sregs)

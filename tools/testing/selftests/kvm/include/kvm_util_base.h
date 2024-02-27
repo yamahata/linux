@@ -117,6 +117,7 @@ struct kvm_vm {
 	vm_vaddr_t handlers;
 	uint32_t dirty_ring_size;
 	uint64_t gpa_tag_mask;
+	uint64_t gpa_protected_mask;
 
 	struct kvm_vm_arch arch;
 

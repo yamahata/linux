@@ -1505,9 +1505,9 @@ _vm_vaddr_alloc(struct kvm_vm *vm, size_t sz, vm_vaddr_t vaddr_min,
 	uint64_t pages = (sz >> vm->page_shift) + ((sz % vm->page_size) != 0);
 
 	virt_pgd_alloc(vm);
-	vm_paddr_t paddr = _vm_phy_pages_alloc(vm, pages,
-					       paddr_min,
-					       data_memslot, encrypt);
+	vm_paddr_t paddr = __vm_phy_pages_alloc(vm, pages,
+						paddr_min,
+						data_memslot, encrypt);
 
 	/*
 	 * Find an unused range of virtual page addresses of at least
@@ -1551,13 +1551,7 @@ vm_vaddr_t vm_vaddr_alloc(struct kvm_vm *vm, size_t sz, vm_vaddr_t vaddr_min)
 {
 	return _vm_vaddr_alloc(vm, sz, vaddr_min,
 			       KVM_UTIL_MIN_PFN * vm->page_size, 0,
-			       vm->protected);
-}
-
-vm_vaddr_t vm_vaddr_alloc_shared(struct kvm_vm *vm, size_t sz, vm_vaddr_t vaddr_min)
-{
-	return _vm_vaddr_alloc(vm, sz, vaddr_min,
-			       KVM_UTIL_MIN_PFN * vm->page_size, 0, false);
+			       vm_arch_has_protected_memory(vm));
 }
 
 /**
@@ -1573,7 +1567,7 @@ vm_vaddr_t vm_vaddr_alloc_1to1(struct kvm_vm *vm, size_t sz, vm_vaddr_t vaddr_mi
 			       uint32_t data_memslot)
 {
 	vm_vaddr_t gva = _vm_vaddr_alloc(vm, sz, vaddr_min, (vm_paddr_t) vaddr_min,
-					 data_memslot, vm->protected);
+					 data_memslot, vm_arch_has_protected_memory(vm));
 	TEST_ASSERT_EQ(gva, addr_gva2gpa(vm, gva));
 
 	return gva;
