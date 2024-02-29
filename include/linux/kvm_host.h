@@ -849,6 +849,9 @@ struct kvm {
 #ifdef CONFIG_HAVE_KVM_READONLY_MEM
 	bool readonly_mem_unsupported;
 #endif
+#ifdef CONFIG_HAVE_KVM_GMEM_PREPARE
+	bool need_gmem_prepare;
+#endif
 };
 
 #define kvm_err(fmt, ...) \

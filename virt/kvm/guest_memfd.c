@@ -52,6 +52,9 @@ static int kvm_gmem_prepare_folio(struct inode *inode, pgoff_t index, struct fol
 		gfn_t gfn;
 		int rc;
 
+		if (!kvm->need_gmem_prepare)
+			continue;
+
 		slot = xa_load(&gmem->bindings, index);
 		if (!slot)
 			continue;
@@ -760,7 +763,12 @@ out_fput:
 int kvm_gmem_get_pfn(struct kvm *kvm, struct kvm_memory_slot *slot,
 		     gfn_t gfn, kvm_pfn_t *pfn, int *max_order)
 {
-	return __kvm_gmem_get_pfn(kvm, slot, gfn, pfn, max_order, true);
+	bool prepare = true;
+
+#ifdef CONFIG_HAVE_KVM_GMEM_PREPARE
+	prepare &= kvm->need_gmem_prepare;
+#endif
+	return __kvm_gmem_get_pfn(kvm, slot, gfn, pfn, max_order, prepare);
 }
 EXPORT_SYMBOL_GPL(kvm_gmem_get_pfn);
 
