@@ -287,30 +287,34 @@ static inline void kvm_mmu_prepare_memory_fault_exit(struct kvm_vcpu *vcpu,
 				      fault->is_private);
 }
 
+#define KVM_PAGE_FAULT_INIT(_vcpu, _cr2_or_gpa, _err, _prefetch, _max_level) {	\
+	.addr = (_cr2_or_gpa),							\
+	.error_code = (_err),							\
+	.exec = (_err) & PFERR_FETCH_MASK,					\
+	.write = (_err) & PFERR_WRITE_MASK,					\
+	.present = (_err) & PFERR_PRESENT_MASK,					\
+	.rsvd = (_err) & PFERR_RSVD_MASK,					\
+	.user = (_err) & PFERR_USER_MASK,					\
+	.prefetch = (_prefetch),						\
+	.is_tdp =								\
+	likely((_vcpu)->arch.mmu->page_fault == kvm_tdp_page_fault),		\
+	.nx_huge_page_workaround_enabled =					\
+	is_nx_huge_page_enabled((_vcpu)->kvm),					\
+										\
+	.max_level = (_max_level),						\
+	.req_level = PG_LEVEL_4K,						\
+	.goal_level = PG_LEVEL_4K,						\
+	.is_private = (_err) & PFERR_PRIVATE_ACCESS,				\
+										\
+	.pfn = KVM_PFN_ERR_FAULT,						\
+	.hva = KVM_HVA_ERR_BAD, }
+
 static inline int kvm_mmu_do_page_fault(struct kvm_vcpu *vcpu, gpa_t cr2_or_gpa,
 					u64 err, bool prefetch, int *emulation_type)
 {
-	struct kvm_page_fault fault = {
-		.addr = cr2_or_gpa,
-		.error_code = err,
-		.exec = err & PFERR_FETCH_MASK,
-		.write = err & PFERR_WRITE_MASK,
-		.present = err & PFERR_PRESENT_MASK,
-		.rsvd = err & PFERR_RSVD_MASK,
-		.user = err & PFERR_USER_MASK,
-		.prefetch = prefetch,
-		.is_tdp = likely(vcpu->arch.mmu->page_fault == kvm_tdp_page_fault),
-		.nx_huge_page_workaround_enabled =
-			is_nx_huge_page_enabled(vcpu->kvm),
-
-		.max_level = KVM_MAX_HUGEPAGE_LEVEL,
-		.req_level = PG_LEVEL_4K,
-		.goal_level = PG_LEVEL_4K,
-		.is_private = err & PFERR_PRIVATE_ACCESS,
-
-		.pfn = KVM_PFN_ERR_FAULT,
-		.hva = KVM_HVA_ERR_BAD,
-	};
+	struct kvm_page_fault fault = KVM_PAGE_FAULT_INIT(vcpu, cr2_or_gpa, err,
+							  prefetch,
+							  KVM_MAX_HUGEPAGE_LEVEL);
 	int r;
 
 	if (vcpu->arch.mmu->root_role.direct) {
