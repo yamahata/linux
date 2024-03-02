@@ -1204,15 +1204,16 @@ void verify_tdcall_vp_info(void)
 	uint32_t i;
 	const struct kvm_cpuid_entry2 *cpuid_entry;
 	int max_pa = -1;
+	int max_vcpus;
 	int ret;
 
 	vm = td_create();
 
 	/* Set value for kvm->max_vcpus to be checked later */
-#define TEST_VP_INFO_MAX_VCPUS 1024
-	ret = kvm_check_cap(KVM_CAP_MAX_VCPUS);
+	ret = vm_check_cap(vm, KVM_CAP_MAX_VCPUS);
 	TEST_ASSERT(ret, "TDX: KVM_CAP_MAX_VCPUS is not supported!");
-	vm_enable_cap(vm, KVM_CAP_MAX_VCPUS, TEST_VP_INFO_MAX_VCPUS);
+	max_vcpus = ret;
+	vm_enable_cap(vm, KVM_CAP_MAX_VCPUS, max_vcpus);
 
 #define TDX_TDPARAM_ATTR_SEPT_VE_DISABLE_BIT	(1UL << 28)
 #define TDX_TDPARAM_ATTR_PKS_BIT		(1UL << 30)
@@ -1276,7 +1277,7 @@ void verify_tdcall_vp_info(void)
 		TEST_ASSERT_EQ(rcx >> 6, 0);
 		TEST_ASSERT_EQ(rdx, attributes);
 		TEST_ASSERT_EQ(ret_num_vcpus, num_vcpus);
-		TEST_ASSERT_EQ(ret_max_vcpus, TEST_VP_INFO_MAX_VCPUS);
+		TEST_ASSERT_EQ(ret_max_vcpus, max_vcpus);
 		/* VCPU_INDEX = i */
 		TEST_ASSERT_EQ(r9, i);
 		/* verify reserved registers are 0 except SYS_RD bit. */
