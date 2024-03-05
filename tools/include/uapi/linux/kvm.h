@@ -2262,4 +2262,38 @@ struct kvm_memory_mapping {
 	__u64 source;
 };
 
+#define KVM_UPDATE_COCO	_IOWR(KVMIO,  0xd6, struct kvm_coco)
+
+enum kvm_coco_cmd {
+	/*
+	 * For VM:
+	 * KVM_SEV_LAUNCH_START with struct kvm_sefv_launch_start
+	 * KVM_TDX_INIT_VM with struct kvm_tdx_init_vm
+	 * For vCPU:
+	 * KVM_SEV_LAUNCH_UPDATE_VMSA
+	 * KVM_TDX_INIT_VCPU
+	 */
+	KVM_COCO_INIT,
+	/* KVM_TDX_EXTEND_MEMORY */
+	KVM_COCO_MEMORY,
+	/*
+	 * For VM:
+	 * KVM_SEV_LAUNCH_FINISH
+	 * KVM_TDX_FINALIZE_VM
+	 */
+	KVM_COCO_FIN,
+};
+
+struct kvm_coco {
+	/* sub command */
+	__u32 cmd;
+	__u32 reserved;
+	/* must be zero for now */
+	__u64 flags;
+	/* out on error: vendor-specific error code */
+	__u64 error;
+	/* pointer to vendor-specific data. Zero if unnecessary */
+	__u64 data;
+};
+
 #endif /* __LINUX_KVM_H */
