@@ -1181,6 +1181,7 @@ struct kvm_ppc_resize_hpt {
 
 /* TODO: remove this workaround to avoid CAP number conflict in the upstream. */
 #define KVM_CAP_ENCRYPT_MEMORY_DEBUG 300
+#define KVM_CAP_COCO 600
 
 #ifdef KVM_CAP_IRQ_ROUTING
 

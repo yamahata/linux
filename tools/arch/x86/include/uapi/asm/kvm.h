@@ -631,4 +631,8 @@ struct kvm_tdx_init_vm {
 	struct kvm_cpuid2 cpuid;
 };
 
+struct kvm_coco_init_tdx_vcpu {
+	__u64 rcx;
+};
+
 #endif /* _ASM_X86_KVM_H */

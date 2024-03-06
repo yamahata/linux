@@ -27,6 +27,8 @@ static char *tdx_cmd_str[] = {
 };
 #define TDX_MAX_CMD_STR (ARRAY_SIZE(tdx_cmd_str))
 
+static bool kvm_coco_supported;
+
 static int _tdx_ioctl(int fd, int ioctl_no, uint32_t flags, void *data)
 {
 	struct kvm_tdx_cmd tdx_cmd;
@@ -88,6 +90,7 @@ static struct kvm_tdx_capabilities *tdx_read_capabilities(struct kvm_vm *vm)
 			 config->eax, config->ebx, config->ecx, config->edx);
 	}
 
+	kvm_coco_supported = vm_check_cap(vm, KVM_CAP_COCO);
 	return tdx_cap;
 }
 
@@ -163,7 +166,15 @@ static void tdx_td_init(struct kvm_vm *vm, uint64_t attributes)
 
 	tdx_apply_cpuid_restrictions(&init_vm->cpuid);
 
-	tdx_ioctl(vm->fd, KVM_TDX_INIT_VM, 0, init_vm);
+	if (kvm_coco_supported) {
+		struct kvm_coco update = {
+			.cmd = KVM_COCO_INIT,
+			.data = (__u64)init_vm,
+		};
+
+		vm_ioctl(vm, KVM_UPDATE_COCO, &update);
+	} else
+		tdx_ioctl(vm->fd, KVM_TDX_INIT_VM, 0, init_vm);
 }
 
 static void tdx_td_vcpu_init(struct kvm_vcpu *vcpu)
@@ -171,7 +182,17 @@ static void tdx_td_vcpu_init(struct kvm_vcpu *vcpu)
 	const struct kvm_cpuid2 *cpuid = kvm_get_supported_cpuid();
 
 	vcpu_init_cpuid(vcpu, cpuid);
-	tdx_ioctl(vcpu->fd, KVM_TDX_INIT_VCPU, 0, NULL);
+	if (kvm_coco_supported) {
+		struct kvm_coco_init_tdx_vcpu init_vcpu = {
+		};
+		struct kvm_coco update = {
+			.cmd = KVM_COCO_INIT,
+			.data = (__u64)&init_vcpu,
+		};
+
+		vcpu_ioctl(vcpu, KVM_UPDATE_COCO, &update);
+	} else
+		tdx_ioctl(vcpu->fd, KVM_TDX_INIT_VCPU, 0, NULL);
 }
 
 static void tdx_init_mem_region(struct kvm_vm *vm, void *source_pages,
@@ -199,12 +220,28 @@ static void tdx_init_mem_region(struct kvm_vm *vm, void *source_pages,
 		.base_gfn = gpa / PAGE_SIZE,
 		.nr_pages = size / PAGE_SIZE,
 	};
-	tdx_ioctl(vm->fd, KVM_TDX_EXTEND_MEMORY, 0, &mapping);
+
+	if (kvm_coco_supported) {
+		struct kvm_coco update = {
+			.cmd = KVM_COCO_MEMORY,
+			.data = (__u64)&mapping,
+		};
+
+		vm_ioctl(vm, KVM_UPDATE_COCO, &update);
+	} else
+		tdx_ioctl(vm->fd, KVM_TDX_EXTEND_MEMORY, 0, &mapping);
 }
 
 static void tdx_td_finalizemr(struct kvm_vm *vm)
 {
-	tdx_ioctl(vm->fd, KVM_TDX_FINALIZE_VM, 0, NULL);
+	if (kvm_coco_supported) {
+		struct kvm_coco update = {
+			.cmd = KVM_COCO_FIN,
+		};
+
+		vm_ioctl(vm, KVM_UPDATE_COCO, &update);
+	} else
+		tdx_ioctl(vm->fd, KVM_TDX_FINALIZE_VM, 0, NULL);
 }
 
 /*
