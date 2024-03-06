@@ -3902,7 +3902,8 @@ void tdx_flush_tlb_current(struct kvm_vcpu *vcpu)
 	tdx_track(vcpu->kvm);
 }
 
-static int tdx_extend_memory(struct kvm *kvm, struct kvm_tdx_cmd *cmd)
+static int __tdx_extend_memory(struct kvm *kvm,
+			       struct kvm_memory_mapping __user *u_mapping)
 {
 	struct kvm_tdx *kvm_tdx = to_kvm_tdx(kvm);
 	struct kvm_memory_mapping mapping;
@@ -3920,10 +3921,7 @@ static int tdx_extend_memory(struct kvm *kvm, struct kvm_tdx_cmd *cmd)
 	if (is_td_finalized(kvm_tdx))
 		return -EINVAL;
 
-	if (cmd->flags)
-		return -EINVAL;
-
-	if (copy_from_user(&mapping, u64_to_user_ptr(cmd->data), sizeof(mapping)))
+	if (copy_from_user(&mapping, u_mapping, sizeof(mapping)))
 		return -EFAULT;
 
 	/* Sanity check */
@@ -3960,10 +3958,18 @@ static int tdx_extend_memory(struct kvm *kvm, struct kvm_tdx_cmd *cmd)
 
 	if (extended && mapping.nr_pages > 0)
 		ret = -EAGAIN;
-	if (copy_to_user(u64_to_user_ptr(cmd->data), &mapping, sizeof(mapping)))
+	if (copy_to_user(u_mapping, &mapping, sizeof(mapping)))
 		ret = -EFAULT;
 
 	return ret;
+}
+
+static int tdx_extend_memory(struct kvm *kvm, struct kvm_tdx_cmd *cmd)
+{
+	if (cmd->flags)
+		return -EINVAL;
+
+	return __tdx_extend_memory(kvm, u64_to_user_ptr(cmd->data));
 }
 
 static int tdx_td_finalizemr(struct kvm *kvm)
