@@ -4894,10 +4894,6 @@ int kvm_mmu_map_tdp_page(struct kvm_vcpu *vcpu, gpa_t gpa, u64 error_code,
 	fault.gfn = gpa_to_gfn(fault.addr) & ~kvm_gfn_shared_mask(vcpu->kvm);
 	fault.slot = kvm_vcpu_gfn_to_memslot(vcpu, fault.gfn);
 
-	r = mmu_topup_memory_caches(vcpu, false);
-	if (r)
-		return r;
-
 #ifdef CONFIG_X86_64
 	if (tdp_mmu_enabled)
 		r = kvm_tdp_mmu_page_fault(vcpu, &fault);
