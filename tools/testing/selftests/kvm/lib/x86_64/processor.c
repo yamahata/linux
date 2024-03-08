@@ -233,7 +233,7 @@ static void ___virt_pg_map(struct kvm_vm *vm, uint64_t vaddr, uint64_t paddr,
 	 * Neither SEV nor TDX supports shared page tables, so only the final
 	 * leaf PTE needs manually set the C/S-bit.
 	 */
-	if (vm_is_gpa_protected(vm, paddr))
+	if (protected)
 		*pte |= vm->arch.c_bit;
 	else
 		*pte |= vm->arch.s_bit;
