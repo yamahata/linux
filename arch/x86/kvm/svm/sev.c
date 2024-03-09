@@ -3238,3 +3238,29 @@ void sev_vcpu_deliver_sipi_vector(struct kvm_vcpu *vcpu, u8 vector)
 
 	ghcb_set_sw_exit_info_2(svm->sev_es.ghcb, 1);
 }
+
+int sev_pre_mmu_map_page(struct kvm_vcpu *vcpu,
+			 struct kvm_memory_mapping *mapping,
+			 u64 *error_code, u8 *max_level)
+{
+	struct kvm_sev_launch_update_data params;
+	u32 error;
+	int r;
+
+	kvm_mmu_map_memory_exact_level(mapping, max_level);
+	params = (struct kvm_sev_launch_update_data) {
+		.uaddr = mapping->source,
+		.len = KVM_PAGES_PER_HPAGE(*max_level) << PAGE_SHIFT,
+	};
+
+	r = __sev_launch_update_data(vcpu->kvm, &params, &error);
+	if (!r)
+		/* Don't trigger KVM page fault. */
+		return 1;
+	return r;
+}
+
+void sev_post_mmu_map_page(struct kvm_vcpu *vcpu,
+			   struct kvm_memory_mapping *mapping)
+{
+}
