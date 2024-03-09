@@ -684,6 +684,8 @@ int sev_mem_enc_unregister_region(struct kvm *kvm,
 int sev_vm_copy_enc_context_from(struct kvm *kvm, unsigned int source_fd);
 int sev_vm_move_enc_context_from(struct kvm *kvm, unsigned int source_fd);
 void sev_guest_memory_reclaimed(struct kvm *kvm);
+int sev_pre_mmu_map_page(struct kvm_vcpu *vcpu,
+			 struct kvm_memory_mapping *mapping, u64 *error_code);
 
 void pre_sev_run(struct vcpu_svm *svm, int cpu);
 void sev_init_vmcb(struct vcpu_svm *svm);
@@ -710,6 +712,12 @@ static inline void __init sev_set_cpu_caps(void) {}
 static inline void __init sev_hardware_setup(void) {}
 static inline void sev_hardware_unsetup(void) {}
 static inline int sev_cpu_init(struct svm_cpu_data *sd) { return 0; }
+static inline int sev_pre_mmu_map_page(struct kvm_vcpu *vcpu,
+				       struct kvm_memory_mapping *mapping,
+				       u64 *error_code)
+{
+	return -EOPNOTSUPP;
+}
 #define max_sev_asid 0
 #endif
 

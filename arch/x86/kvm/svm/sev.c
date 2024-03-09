@@ -3230,3 +3230,9 @@ void sev_vcpu_deliver_sipi_vector(struct kvm_vcpu *vcpu, u8 vector)
 
 	ghcb_set_sw_exit_info_2(svm->sev_es.ghcb, 1);
 }
+
+int sev_pre_mmu_map_page(struct kvm_vcpu *vcpu,
+			 struct kvm_memory_mapping *mapping, u64 *error_code)
+{
+	return -EOPNOTSUPP;
+}
