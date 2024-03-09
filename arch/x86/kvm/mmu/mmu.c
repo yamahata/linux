@@ -7628,6 +7628,8 @@ static bool hugepage_has_attrs(struct kvm *kvm, struct kvm_memory_slot *slot,
 	if (level == PG_LEVEL_2M)
 		return kvm_range_has_memory_attributes(kvm, start, end, attrs);
 
+	if (end > slot->base_gfn + slot->npages)
+		return false;
 	for (gfn = start; gfn < end; gfn += KVM_PAGES_PER_HPAGE(level - 1)) {
 		if (hugepage_test_mixed(slot, gfn, level - 1) ||
 		    attrs != kvm_get_memory_attributes(kvm, gfn))
