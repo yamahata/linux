@@ -4704,6 +4704,49 @@ int kvm_tdp_page_fault(struct kvm_vcpu *vcpu, struct kvm_page_fault *fault)
 	return direct_page_fault(vcpu, fault);
 }
 
+int kvm_tdp_mmu_map_page(struct kvm_vcpu *vcpu, gpa_t gpa, u64 error_code,
+			 u8 max_level, u8 *goal_level)
+{
+	struct kvm_page_fault fault = KVM_PAGE_FAULT_INIT(vcpu, gpa, error_code,
+							  false, max_level);
+	int r;
+
+#ifdef CONFIG_X86_64
+	/* Restrict to TDP MMU. */
+	if (unlikely(!tdp_mmu_enabled))
+		return -EOPNOTSUPP;
+#else
+	return -EOPNOTSUPP;
+#endif
+
+	if (unlikely(vcpu->arch.mmu->page_fault != kvm_tdp_page_fault))
+		return -EINVAL;
+	if (unlikely(is_guest_mode(vcpu)))
+		return -EINVAL;
+
+	r = kvm_tdp_page_fault(vcpu, &fault);
+
+	if (is_error_noslot_pfn(fault.pfn) || vcpu->kvm->vm_bugged)
+		return -EFAULT;
+
+	switch (r) {
+	case RET_PF_RETRY:
+		return -EAGAIN;
+
+	case RET_PF_FIXED:
+	case RET_PF_SPURIOUS:
+		*goal_level = fault.goal_level;
+		return 0;
+
+	case RET_PF_CONTINUE:
+	case RET_PF_EMULATE:
+	case RET_PF_INVALID:
+	default:
+		return -EIO;
+	}
+}
+EXPORT_SYMBOL_GPL(kvm_tdp_mmu_map_page);
+
 static void nonpaging_init_context(struct kvm_mmu *context)
 {
 	context->page_fault = nonpaging_page_fault;
