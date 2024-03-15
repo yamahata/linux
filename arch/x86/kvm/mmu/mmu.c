@@ -4720,7 +4720,8 @@ int kvm_tdp_mmu_map_page(struct kvm_vcpu *vcpu, gpa_t gpa, u64 error_code,
 		return -EINVAL;
 
 	WARN_ON_ONCE(!vcpu->arch.mmu->root_role.direct);
-	r = __kvm_mmu_do_page_fault(vcpu, gpa, error_code, false, NULL, level);
+	r = __kvm_mmu_do_page_fault(vcpu, gpa, error_code, false, false, NULL,
+				    level);
 	if (r < 0)
 		return r;
 

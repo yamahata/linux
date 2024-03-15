@@ -994,6 +994,14 @@ static int tdp_mmu_map_handle_target_level(struct kvm_vcpu *vcpu,
 	if (WARN_ON_ONCE(sp->role.level != fault->goal_level))
 		return RET_PF_RETRY;
 
+	if (unlikely(fault->lookup_only)) {
+		if (is_shadow_present_pte(iter->old_spte)) {
+			fault->pfn = spte_to_pfn(iter->old_spte);
+			return RET_PF_SPURIOUS;
+		}
+		return -ENOENT;
+	}
+
 	if (unlikely(!fault->slot))
 		new_spte = make_mmio_spte(vcpu, iter->gfn, ACC_ALL);
 	else
@@ -1105,6 +1113,9 @@ int kvm_tdp_mmu_map(struct kvm_vcpu *vcpu, struct kvm_page_fault *fault)
 		if (is_shadow_present_pte(iter.old_spte) &&
 		    !is_large_pte(iter.old_spte))
 			continue;
+
+		if (unlikely(fault->lookup_only))
+			return -ENOENT;
 
 		/*
 		 * The SPTE is either non-present or points to a huge page that

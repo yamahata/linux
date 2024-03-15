@@ -192,6 +192,7 @@ struct kvm_page_fault {
 	const gpa_t addr;
 	const u64 error_code;
 	const bool prefetch;
+	const bool lookup_only;
 
 	/* Derived from error_code.  */
 	const bool exec;
@@ -289,7 +290,8 @@ static inline void kvm_mmu_prepare_memory_fault_exit(struct kvm_vcpu *vcpu,
 
 static inline int __kvm_mmu_do_page_fault(struct kvm_vcpu *vcpu, gpa_t cr2_or_gpa,
 					  u64 err, bool prefetch,
-					  int *emulation_type, u8 *level)
+					  bool lookup_only, int *emulation_type,
+					  u8 *level)
 {
 	struct kvm_page_fault fault = {
 		.addr = cr2_or_gpa,
@@ -300,6 +302,7 @@ static inline int __kvm_mmu_do_page_fault(struct kvm_vcpu *vcpu, gpa_t cr2_or_gp
 		.rsvd = err & PFERR_RSVD_MASK,
 		.user = err & PFERR_USER_MASK,
 		.prefetch = prefetch,
+		.lookup_only = lookup_only,
 		.is_tdp = likely(vcpu->arch.mmu->page_fault == kvm_tdp_page_fault),
 		.nx_huge_page_workaround_enabled =
 			is_nx_huge_page_enabled(vcpu->kvm),
@@ -350,7 +353,7 @@ static inline int kvm_mmu_do_page_fault(struct kvm_vcpu *vcpu, gpa_t cr2_or_gpa,
 	if (!prefetch)
 		vcpu->stat.pf_taken++;
 
-	r = __kvm_mmu_do_page_fault(vcpu, cr2_or_gpa, err, prefetch,
+	r = __kvm_mmu_do_page_fault(vcpu, cr2_or_gpa, err, prefetch, false,
 				    emulation_type, NULL);
 
 	/*
