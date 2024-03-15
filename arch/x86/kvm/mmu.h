@@ -186,6 +186,7 @@ static inline void kvm_mmu_refresh_passthrough_bits(struct kvm_vcpu *vcpu,
 
 int kvm_tdp_mmu_map_page(struct kvm_vcpu *vcpu, gpa_t gpa, u64 error_code,
 			 u8 *level);
+void kvm_tdp_mmu_release_pfn(struct kvm_vcpu *vcpu, kvm_pfn_t pfn);
 
 /*
  * Check if a given access (described through the I/D, W/R and U/S bits of a
