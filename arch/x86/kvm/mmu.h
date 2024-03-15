@@ -186,6 +186,8 @@ static inline void kvm_mmu_refresh_passthrough_bits(struct kvm_vcpu *vcpu,
 
 int kvm_tdp_mmu_map_page(struct kvm_vcpu *vcpu, gpa_t gpa, u64 error_code,
 			 u8 *level);
+int kvm_tdp_mmu_lookup_page(struct kvm_vcpu *vcpu, gpa_t gpa, u64 error_code,
+			    u8 *level, kvm_pfn_t *pfn);
 void kvm_tdp_mmu_release_pfn(struct kvm_vcpu *vcpu, kvm_pfn_t pfn);
 
 /*

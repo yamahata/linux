@@ -250,6 +250,15 @@ struct kvm_page_fault {
 	bool write_fault_to_shadow_pgtable;
 };
 
+#ifdef CONFIG_X86_64
+int kvm_tdp_mmu_lookup(struct kvm_vcpu *vcpu, struct kvm_page_fault *fault);
+#else
+static inline int kvm_tdp_mmu_lookup(struct kvm_vcpu *vcpu,
+				     struct kvm_page_fault *fault)
+{
+	return -EOPNOTSUPP;
+}
+#endif
 int kvm_tdp_page_fault(struct kvm_vcpu *vcpu, struct kvm_page_fault *fault);
 
 /*
@@ -291,7 +300,7 @@ static inline void kvm_mmu_prepare_memory_fault_exit(struct kvm_vcpu *vcpu,
 static inline int __kvm_mmu_do_page_fault(struct kvm_vcpu *vcpu, gpa_t cr2_or_gpa,
 					  u64 err, bool prefetch,
 					  bool lookup_only, int *emulation_type,
-					  u8 *level)
+					  u8 *level, kvm_pfn_t *pfn)
 {
 	struct kvm_page_fault fault = {
 		.addr = cr2_or_gpa,
@@ -322,10 +331,14 @@ static inline int __kvm_mmu_do_page_fault(struct kvm_vcpu *vcpu, gpa_t cr2_or_gp
 		fault.slot = kvm_vcpu_gfn_to_memslot(vcpu, fault.gfn);
 	}
 
-	if (IS_ENABLED(CONFIG_RETPOLINE) && fault.is_tdp)
-		r = kvm_tdp_page_fault(vcpu, &fault);
-	else
-		r = vcpu->arch.mmu->page_fault(vcpu, &fault);
+	if (unlikely(lookup_only))
+		r = kvm_tdp_mmu_lookup(vcpu, &fault);
+	else {
+		if (IS_ENABLED(CONFIG_RETPOLINE) && fault.is_tdp)
+			r = kvm_tdp_page_fault(vcpu, &fault);
+		else
+			r = vcpu->arch.mmu->page_fault(vcpu, &fault);
+	}
 
 	if (r == RET_PF_EMULATE && fault.is_private) {
 		kvm_mmu_prepare_memory_fault_exit(vcpu, &fault);
@@ -336,6 +349,8 @@ static inline int __kvm_mmu_do_page_fault(struct kvm_vcpu *vcpu, gpa_t cr2_or_gp
 	}
 	if (level)
 		*level = fault.goal_level;
+	if (pfn)
+		*pfn = fault.pfn;
 
 	return r;
 }
@@ -354,7 +369,7 @@ static inline int kvm_mmu_do_page_fault(struct kvm_vcpu *vcpu, gpa_t cr2_or_gpa,
 		vcpu->stat.pf_taken++;
 
 	r = __kvm_mmu_do_page_fault(vcpu, cr2_or_gpa, err, prefetch, false,
-				    emulation_type, NULL);
+				    emulation_type, NULL, NULL);
 
 	/*
 	 * Similar to above, prefetch faults aren't truly spurious, and the
