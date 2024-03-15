@@ -1501,6 +1501,109 @@ static int tdx_vcpu_init(struct kvm_vcpu *vcpu, struct kvm_tdx_cmd *cmd)
 	return 0;
 }
 
+#define TDX_SEPT_PFERR (PFERR_WRITE_MASK | PFERR_PRIVATE_ACCESS)
+
+static int tdx_vcpu_init_mem_region(struct kvm_vcpu *vcpu, struct kvm_tdx_cmd *cmd)
+{
+	struct kvm *kvm = vcpu->kvm;
+	struct kvm_tdx *kvm_tdx = to_kvm_tdx(kvm);
+	struct kvm_tdx_init_mem_region region;
+	int i, idx, ret = 0;
+	struct page *page;
+	hpa_t source_hpa;
+	kvm_pfn_t pfn;
+	u8 level;
+	u64 err;
+
+	if (!to_tdx(vcpu)->initialized)
+		return -EINVAL;
+
+	/* Once TD is finalized, the initial guest memory is fixed. */
+	if (is_td_finalized(kvm_tdx))
+		return -EINVAL;
+
+	if (cmd->flags & ~KVM_TDX_MEASURE_MEMORY_REGION)
+		return -EINVAL;
+
+	if (copy_from_user(&region, u64_to_user_ptr(cmd->data), sizeof(region)))
+		return -EFAULT;
+
+	if (!PAGE_ALIGNED(region.source_addr) || !PAGE_ALIGNED(region.gpa) ||
+	    region.gpa + (region.nr_pages << PAGE_SHIFT) <= region.gpa ||
+	    region.nr_pages & GENMASK_ULL(63, 63 - PAGE_SHIFT) ||
+	    !kvm_is_private_gpa(kvm, region.gpa) ||
+	    !kvm_is_private_gpa(kvm, region.gpa + (region.nr_pages << PAGE_SHIFT)))
+		return -EINVAL;
+
+	idx = srcu_read_lock(&kvm->srcu);
+
+	while (region.nr_pages) {
+		if (signal_pending(current)) {
+			ret = -EINTR;
+			break;
+		}
+		cond_resched();
+
+		/* Pin the source page. */
+		ret = get_user_pages_fast(region.source_addr, 1, 0, &page);
+		if (ret < 0)
+			break;
+		if (ret != 1) {
+			ret = -ENOMEM;
+			break;
+		}
+		source_hpa = pfn_to_hpa(page_to_pfn(page));
+
+		ret = kvm_tdp_mmu_lookup_page(vcpu, region.gpa, TDX_SEPT_PFERR,
+					      &level, &pfn);
+		if (ret)
+			break;
+		lockdep_assert_held_read(&vcpu->kvm->mmu_lock);
+
+		do {
+			err = tdh_mem_page_add(kvm_tdx->tdr_pa, region.gpa,
+					       pfn_to_hpa(pfn), source_hpa, NULL);
+			/*
+			 * This path is executed during populating initial guest
+			 * memory image. i.e. before running any vcpu.  Race is
+			 * rare.
+			 */
+		} while (unlikely(err == TDX_ERROR_SEPT_BUSY));
+		kvm_tdp_mmu_release_pfn(vcpu, pfn);
+		WARN_ON_ONCE(!atomic64_read(&kvm_tdx->nr_premapped));
+		atomic64_dec(&kvm_tdx->nr_premapped);
+
+		put_page(page);
+		if (err) {
+			ret = -EIO;
+			break;
+		}
+
+		if (cmd->flags & KVM_TDX_MEASURE_MEMORY_REGION) {
+			for (i = 0; i < PAGE_SIZE; i += TDX_EXTENDMR_CHUNKSIZE) {
+				err = tdh_mr_extend(kvm_tdx->tdr_pa, region.gpa + i, NULL);
+				if (err) {
+					ret = -EIO;
+					break;
+				}
+			}
+			if (ret)
+				break;
+		}
+
+		WARN_ON_ONCE(level != PG_LEVEL_4K);
+		region.source_addr += PAGE_SIZE;
+		region.gpa += PAGE_SIZE;
+		region.nr_pages--;
+	}
+
+	srcu_read_unlock(&kvm->srcu, idx);
+
+	if (copy_to_user(u64_to_user_ptr(cmd->data), &region, sizeof(region)))
+		ret = -EFAULT;
+	return ret;
+}
+
 int tdx_vcpu_ioctl(struct kvm_vcpu *vcpu, void __user *argp)
 {
 	struct kvm_tdx *kvm_tdx = to_kvm_tdx(vcpu->kvm);
@@ -1519,6 +1622,9 @@ int tdx_vcpu_ioctl(struct kvm_vcpu *vcpu, void __user *argp)
 	switch (cmd.id) {
 	case KVM_TDX_INIT_VCPU:
 		ret = tdx_vcpu_init(vcpu, &cmd);
+		break;
+	case KVM_TDX_INIT_MEM_REGION:
+		ret = tdx_vcpu_init_mem_region(vcpu, &cmd);
 		break;
 	default:
 		ret = -EINVAL;
@@ -1544,8 +1650,6 @@ int tdx_gmem_max_level(struct kvm *kvm, kvm_pfn_t pfn, gfn_t gfn,
 	*max_level = min(*max_level, PG_LEVEL_4K);
 	return 0;
 }
-
-#define TDX_SEPT_PFERR	(PFERR_WRITE_MASK | PFERR_PRIVATE_ACCESS)
 
 int tdx_pre_mmu_map_page(struct kvm_vcpu *vcpu,
 			 struct kvm_memory_mapping *mapping,
