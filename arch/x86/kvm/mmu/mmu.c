@@ -4620,6 +4620,26 @@ int kvm_handle_page_fault(struct kvm_vcpu *vcpu, u64 error_code,
 EXPORT_SYMBOL_GPL(kvm_handle_page_fault);
 
 #ifdef CONFIG_X86_64
+void kvm_tdp_mmu_release_pfn(struct kvm_vcpu *vcpu, kvm_pfn_t pfn)
+	__releases(&vcpu->kvm->mmu_lock)
+{
+	read_unlock(&vcpu->kvm->mmu_lock);
+	kvm_release_pfn_clean(pfn);
+}
+EXPORT_SYMBOL_GPL(kvm_tdp_mmu_release_pfn);
+
+static int __kvm_tdp_mmu_page_fault(struct kvm_vcpu *vcpu,
+				    struct kvm_page_fault *fault)
+	__acquires(&vcpu->kvm->mmu_lock)
+{
+	read_lock(&vcpu->kvm->mmu_lock);
+
+	if (is_page_fault_stale(vcpu, fault))
+		return RET_PF_RETRY;
+
+	return kvm_tdp_mmu_map(vcpu, fault);
+}
+
 static int kvm_tdp_mmu_page_fault(struct kvm_vcpu *vcpu,
 				  struct kvm_page_fault *fault)
 {
@@ -4640,17 +4660,8 @@ static int kvm_tdp_mmu_page_fault(struct kvm_vcpu *vcpu,
 	if (r != RET_PF_CONTINUE)
 		return r;
 
-	r = RET_PF_RETRY;
-	read_lock(&vcpu->kvm->mmu_lock);
-
-	if (is_page_fault_stale(vcpu, fault))
-		goto out_unlock;
-
-	r = kvm_tdp_mmu_map(vcpu, fault);
-
-out_unlock:
-	read_unlock(&vcpu->kvm->mmu_lock);
-	kvm_release_pfn_clean(fault->pfn);
+	r = __kvm_tdp_mmu_page_fault(vcpu, fault);
+	kvm_tdp_mmu_release_pfn(vcpu, fault->pfn);
 	return r;
 }
 #endif
