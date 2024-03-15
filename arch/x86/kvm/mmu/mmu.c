@@ -4664,6 +4664,43 @@ static int kvm_tdp_mmu_page_fault(struct kvm_vcpu *vcpu,
 	kvm_tdp_mmu_release_pfn(vcpu, fault->pfn);
 	return r;
 }
+
+int kvm_tdp_mmu_lookup(struct kvm_vcpu *vcpu, struct kvm_page_fault *fault)
+{
+	int r;
+
+	r = kvm_faultin_pfn(vcpu, fault, ACC_ALL);
+	if (r != RET_PF_CONTINUE) {
+		if (r > 0)
+			r = -EIO;
+		return r;
+	}
+
+	r = __kvm_tdp_mmu_page_fault(vcpu, fault);
+	if (r == RET_PF_SPURIOUS)
+		return 0;
+
+	kvm_tdp_mmu_release_pfn(vcpu, fault->pfn);
+	if (r < 0)
+		return r;
+	switch (r) {
+	case RET_PF_RETRY:
+		r = -EAGAIN;
+		break;
+	case RET_PF_EMULATE:
+		r = -EINVAL;
+		break;
+	case RET_PF_FIXED:
+	case RET_PF_CONTINUE:
+	case RET_PF_INVALID:
+	case RET_PF_SPURIOUS:
+	default:
+		WARN_ON_ONCE(1);
+		r = -EIO;
+		break;
+	}
+	return r;
+}
 #endif
 
 bool __kvm_mmu_honors_guest_mtrrs(bool vm_has_noncoherent_dma)
@@ -4721,7 +4758,7 @@ int kvm_tdp_mmu_map_page(struct kvm_vcpu *vcpu, gpa_t gpa, u64 error_code,
 
 	WARN_ON_ONCE(!vcpu->arch.mmu->root_role.direct);
 	r = __kvm_mmu_do_page_fault(vcpu, gpa, error_code, false, false, NULL,
-				    level);
+				    level, NULL);
 	if (r < 0)
 		return r;
 
@@ -4743,6 +4780,22 @@ int kvm_tdp_mmu_map_page(struct kvm_vcpu *vcpu, gpa_t gpa, u64 error_code,
 		return -EIO;
 	}
 }
+
+int kvm_tdp_mmu_lookup_page(struct kvm_vcpu *vcpu, gpa_t gpa, u64 error_code,
+			    u8 *level, kvm_pfn_t *pfn)
+{
+	/* Restrict to TDP MMU. */
+	if (unlikely(!tdp_mmu_enabled))
+		return -EOPNOTSUPP;
+	if (unlikely(vcpu->arch.mmu->page_fault != kvm_tdp_page_fault))
+		return -EINVAL;
+	if (unlikely(is_guest_mode(vcpu)))
+		return -EINVAL;
+
+	return __kvm_mmu_do_page_fault(vcpu, gpa, error_code, false, true, NULL,
+				       level, pfn);
+}
+EXPORT_SYMBOL_GPL(kvm_tdp_mmu_lookup_page);
 
 static void nonpaging_init_context(struct kvm_mmu *context)
 {
