@@ -255,7 +255,7 @@ static inline int tdx_gmem_max_level(struct kvm *kvm, kvm_pfn_t pfn, gfn_t gfn,
 }
 static inline int tdx_pre_mmu_map_page(struct kvm_vcpu *vcpu,
 				       struct kvm_memory_mapping *mapping,
-				       u64 *error_code, u8 *max_level)
+				       u64 *error_code)
 {
 	return -EOPNOTSUPP;
 }
