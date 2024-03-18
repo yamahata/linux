@@ -712,6 +712,12 @@ static inline void __init sev_set_cpu_caps(void) {}
 static inline void __init sev_hardware_setup(void) {}
 static inline void sev_hardware_unsetup(void) {}
 static inline int sev_cpu_init(struct svm_cpu_data *sd) { return 0; }
+static inline int sev_pre_mmu_map_page(struct kvm_vcpu *vcpu,
+				       struct kvm_memory_mapping *mapping,
+				       u64 *error_code)
+{
+	return -EOPNOTSUPP;
+}
 #define max_sev_asid 0
 #endif
 
