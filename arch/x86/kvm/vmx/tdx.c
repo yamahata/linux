@@ -1551,7 +1551,6 @@ static void tdx_unpin(struct kvm *kvm, kvm_pfn_t pfn)
 static int tdx_mem_page_aug(struct kvm *kvm, gfn_t gfn,
 			    enum pg_level level, kvm_pfn_t pfn)
 {
-	int tdx_level = pg_level_to_tdx_sept_level(level);
 	struct kvm_tdx *kvm_tdx = to_kvm_tdx(kvm);
 	hpa_t hpa = pfn_to_hpa(pfn);
 	gpa_t gpa = gfn_to_gpa(gfn);
@@ -1562,16 +1561,6 @@ static int tdx_mem_page_aug(struct kvm *kvm, gfn_t gfn,
 	if (unlikely(err == TDX_ERROR_SEPT_BUSY)) {
 		tdx_unpin(kvm, pfn);
 		return -EBUSY;
-	}
-	if (unlikely(err == (TDX_EPT_ENTRY_STATE_INCORRECT | TDX_OPERAND_ID_RCX))) {
-		if (tdx_get_sept_level(level_state) == tdx_level &&
-		    tdx_get_sept_state(level_state) == TDX_SEPT_PENDING &&
-		    is_last_spte(entry, level) &&
-		    spte_to_pfn(entry) == pfn &&
-		    entry & VMX_EPT_SUPPRESS_VE_BIT) {
-			tdx_unpin(kvm, pfn);
-			return -EAGAIN;
-		}
 	}
 	if (KVM_BUG_ON(err, kvm)) {
 		pr_tdx_error_2(TDH_MEM_PAGE_AUG, err, entry, level_state);
