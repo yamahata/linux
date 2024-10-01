@@ -199,4 +199,6 @@ static inline u8 tdx_get_sept_state(u64 sept_entry_info)
  */
 #define TD_MD_FIELD_ID_CPUID_VALUES		0x9410000300000000ULL
 
+#define TDX_MD_MASK				GENMASK_ULL(63, 52)
+
 #endif /* __KVM_X86_TDX_ARCH_H */

@@ -840,6 +840,15 @@ static void vt_setup_mce(struct kvm_vcpu *vcpu)
 	vmx_setup_mce(vcpu);
 }
 
+static int vt_vcpu_device_attr(struct kvm_vcpu *vcpu, unsigned int ioctl,
+			       struct kvm_device_attr *attr)
+{
+	if (!is_td_vcpu(vcpu))
+		return -ENXIO;
+
+	return tdx_vcpu_device_attr(vcpu, ioctl, attr);
+}
+
 static int vt_mem_enc_ioctl(struct kvm *kvm, void __user *argp)
 {
 	if (!is_td(kvm))
@@ -1019,6 +1028,7 @@ struct kvm_x86_ops vt_x86_ops __initdata = {
 
 	.get_untagged_addr = vmx_get_untagged_addr,
 
+	.vcpu_device_attr = vt_vcpu_device_attr,
 	.mem_enc_ioctl = vt_mem_enc_ioctl,
 	.vcpu_mem_enc_ioctl = vt_vcpu_mem_enc_ioctl,
 

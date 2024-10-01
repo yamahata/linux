@@ -2761,6 +2761,44 @@ static int tdx_td_finalizemr(struct kvm *kvm, struct kvm_tdx_cmd *cmd)
 	return 0;
 }
 
+int tdx_vcpu_device_attr(struct kvm_vcpu *vcpu, unsigned int ioctl,
+			 struct kvm_device_attr *attr)
+{
+	u64 __user *uaddr = u64_to_user_ptr(attr->addr);
+	int r = -ENXIO;
+	u64 ret, val;
+
+	if (attr->group != KVM_VCPU_TDX_MD_CTRL)
+		return r;
+	if (attr->flags)
+		return -EINVAL;
+
+	switch (ioctl) {
+	case KVM_HAS_DEVICE_ATTR:
+	case KVM_GET_DEVICE_ATTR:
+		/* This bit pattern is reserved for VMM private use. */
+		if ((attr->attr & TDX_MD_MASK) == TDX_MD_MASK) {
+			r = -EINVAL;
+			break;
+		}
+
+		ret = tdh_vp_rd(to_tdx(vcpu)->tdvpr_pa, attr->attr, &val);
+		if (ret)
+			break;
+		if (ioctl == KVM_GET_DEVICE_ATTR) {
+			r = -EFAULT;
+			if (put_user(val, uaddr))
+				break;
+		}
+		r = 0;
+		break;
+	case KVM_SET_DEVICE_ATTR:
+		break;
+	}
+
+	return r;
+}
+
 int tdx_vm_ioctl(struct kvm *kvm, void __user *argp)
 {
 	struct kvm_tdx_cmd tdx_cmd;
