@@ -69,6 +69,7 @@
 
 enum tdx_tdcs_execution_control {
 	TD_TDCS_EXEC_TSC_OFFSET = 10,
+	TD_TDCS_EXEC_TSC_MULTIPLIER = 11,
 };
 
 enum tdx_vcpu_guest_other_state {

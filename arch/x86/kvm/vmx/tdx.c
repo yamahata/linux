@@ -661,6 +661,24 @@ int tdx_vm_init(struct kvm *kvm)
 	return 0;
 }
 
+void tdx_write_tsc_offset(struct kvm_vcpu *vcpu)
+{
+	/* In TDX, tsc offset can't be changed. */
+	WARN_ON_ONCE(vcpu->arch.tsc_offset !=
+		     to_kvm_tdx(vcpu->kvm)->tsc_offset);
+	WARN_ON_ONCE(vcpu->arch.l1_tsc_offset !=
+		     to_kvm_tdx(vcpu->kvm)->tsc_offset);
+}
+
+void tdx_write_tsc_multiplier(struct kvm_vcpu *vcpu)
+{
+	/* In TDX, tsc multiplier can't be changed. */
+	WARN_ON_ONCE(vcpu->arch.tsc_scaling_ratio !=
+		     to_kvm_tdx(vcpu->kvm)->tsc_multiplier);
+	WARN_ON_ONCE(vcpu->arch.l1_tsc_scaling_ratio !=
+		     to_kvm_tdx(vcpu->kvm)->tsc_multiplier);
+}
+
 int tdx_vcpu_create(struct kvm_vcpu *vcpu)
 {
 	struct kvm_tdx *kvm_tdx = to_kvm_tdx(vcpu->kvm);
@@ -683,8 +701,6 @@ int tdx_vcpu_create(struct kvm_vcpu *vcpu)
 	vcpu->arch.cr0_guest_owned_bits = -1ul;
 	vcpu->arch.cr4_guest_owned_bits = -1ul;
 
-	vcpu->arch.tsc_offset = kvm_tdx->tsc_offset;
-	vcpu->arch.l1_tsc_offset = vcpu->arch.tsc_offset;
 	/*
 	 * TODO: support off-TD debug.  If TD DEBUG is enabled, guest state
 	 * can be accessed. guest_state_protected = false. and kvm ioctl to
@@ -694,6 +710,13 @@ int tdx_vcpu_create(struct kvm_vcpu *vcpu)
 	 *	!(to_kvm_tdx(vcpu->kvm)->attributes & TDX_TD_ATTR_DEBUG);
 	 */
 	vcpu->arch.guest_state_protected = true;
+
+	/* VMM can't change TSC offset/multiplier as TDX module manages them. */
+	vcpu->arch.guest_tsc_protected = true;
+	vcpu->arch.tsc_offset = kvm_tdx->tsc_offset;
+	vcpu->arch.l1_tsc_offset = vcpu->arch.tsc_offset;
+	vcpu->arch.tsc_scaling_ratio = kvm_tdx->tsc_multiplier;
+	vcpu->arch.l1_tsc_scaling_ratio = kvm_tdx->tsc_multiplier;
 
 	if ((kvm_tdx->xfam & XFEATURE_MASK_XTILE) == XFEATURE_MASK_XTILE)
 		vcpu->arch.xfd_no_write_intercept = true;
@@ -2655,6 +2678,7 @@ static int tdx_td_init(struct kvm *kvm, struct kvm_tdx_cmd *cmd)
 		goto out;
 
 	kvm_tdx->tsc_offset = td_tdcs_exec_read64(kvm_tdx, TD_TDCS_EXEC_TSC_OFFSET);
+	kvm_tdx->tsc_multiplier = td_tdcs_exec_read64(kvm_tdx, TD_TDCS_EXEC_TSC_MULTIPLIER);
 	kvm_tdx->attributes = td_params->attributes;
 	kvm_tdx->xfam = td_params->xfam;
 

@@ -42,6 +42,7 @@ struct kvm_tdx {
 	bool tsx_supported;
 
 	u64 tsc_offset;
+	u64 tsc_multiplier;
 
 	enum kvm_tdx_state state;
 

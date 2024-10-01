@@ -792,8 +792,10 @@ static u64 vt_get_l2_tsc_multiplier(struct kvm_vcpu *vcpu)
 static void vt_write_tsc_offset(struct kvm_vcpu *vcpu)
 {
 	/* In TDX, tsc offset can't be changed. */
-	if (is_td_vcpu(vcpu))
+	if (is_td_vcpu(vcpu)) {
+		tdx_write_tsc_offset(vcpu);
 		return;
+	}
 
 	vmx_write_tsc_offset(vcpu);
 }
@@ -801,8 +803,10 @@ static void vt_write_tsc_offset(struct kvm_vcpu *vcpu)
 static void vt_write_tsc_multiplier(struct kvm_vcpu *vcpu)
 {
 	/* In TDX, tsc multiplier can't be changed. */
-	if (is_td_vcpu(vcpu))
+	if (is_td_vcpu(vcpu)) {
+		tdx_write_tsc_multiplier(vcpu);
 		return;
+	}
 
 	vmx_write_tsc_multiplier(vcpu);
 }
