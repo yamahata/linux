@@ -1845,6 +1845,8 @@ struct kvm_x86_ops {
 #endif
 
 	int (*dev_get_attr)(u32 group, u64 attr, u64 *val);
+	int (*vcpu_device_attr)(struct kvm_vcpu *vcpu, unsigned int ioctl,
+				struct kvm_device_attr *attr);
 	int (*mem_enc_ioctl)(struct kvm *kvm, void __user *argp);
 	int (*vcpu_mem_enc_ioctl)(struct kvm_vcpu *vcpu, void __user *argp);
 	int (*mem_enc_register_region)(struct kvm *kvm, struct kvm_enc_region *argp);

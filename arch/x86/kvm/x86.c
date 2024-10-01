@@ -5802,8 +5802,11 @@ static int kvm_vcpu_ioctl_device_attr(struct kvm_vcpu *vcpu,
 	if (copy_from_user(&attr, argp, sizeof(attr)))
 		return -EFAULT;
 
-	if (attr.group != KVM_VCPU_TSC_CTRL)
+	if (attr.group != KVM_VCPU_TSC_CTRL) {
+		if (kvm_x86_ops.vcpu_device_attr)
+			return kvm_x86_call(vcpu_device_attr)(vcpu, ioctl, &attr);
 		return -ENXIO;
+	}
 
 	switch (ioctl) {
 	case KVM_HAS_DEVICE_ATTR:
