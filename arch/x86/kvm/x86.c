@@ -3790,6 +3790,74 @@ static void record_steal_time(struct kvm_vcpu *vcpu)
 	mark_page_dirty_in_slot(vcpu->kvm, ghc->memslot, gpa_to_gfn(ghc->gpa));
 }
 
+void tscdata_update(struct kvm_vcpu *vcpu, bool vmexit)
+{
+	struct shared_tsc_data *tscdata;
+	unsigned long flags;
+	struct gfn_to_pfn_cache *gpc = &vcpu->arch.tdxtsc_debug;
+
+	if (!vcpu->arch.tsc_dbg_enabled)
+		return;
+
+        read_lock_irqsave(&gpc->lock, flags);
+        while (!kvm_gpc_check(gpc, sizeof(*tscdata))) {
+                read_unlock_irqrestore(&gpc->lock, flags);
+
+                if (kvm_gpc_refresh(gpc, sizeof(*tscdata)))
+                        return;
+
+                read_lock_irqsave(&gpc->lock, flags);
+        }
+
+	tscdata = (void *)(gpc->khva);
+
+	if (tscdata->i < TSC_MAX_ENTRIES-10)  {
+
+		u64 host_tsc = rdtsc_ordered();
+
+		if (!vmexit) {
+
+			tscdata->vme[tscdata->i].r = host_tsc;
+			tscdata->vme[tscdata->i].c = kvm_scale_tsc(host_tsc, vcpu->arch.l1_tsc_scaling_ratio);
+			tscdata->vme[tscdata->i].o = vcpu->arch.l1_tsc_offset;
+			trace_printk("new tscdata (vmentry), i=%d host_tsc=%lld\n", tscdata->i, host_tsc);
+		} else {
+			tscdata->vmex[tscdata->i].r = host_tsc;
+			tscdata->vmex[tscdata->i].c = kvm_scale_tsc(host_tsc, vcpu->arch.l1_tsc_scaling_ratio);
+			tscdata->vmex[tscdata->i].o = vcpu->arch.l1_tsc_offset;
+
+			trace_printk("new tscdata (vmexit), i=%d (next will be %d) host_tsc=%lld\n", tscdata->i, tscdata->i+1,host_tsc);
+
+			tscdata->i++;
+		}
+	} else {
+		vcpu->arch.tsc_dbg_enabled = 0;
+	}
+
+	kvm_gpc_mark_dirty_in_slot(gpc);
+	read_unlock_irqrestore(&gpc->lock, flags);
+}
+
+static int kvm_msr_debug_tdxtsc(struct kvm_vcpu *vcpu, u64 data)
+{
+	int ret;
+
+	/* initialize counters */
+	if (data & 0x1) {
+		ret = kvm_gpc_activate(&vcpu->arch.tdxtsc_debug, data & ~1ULL,
+				 sizeof(struct shared_tsc_data));
+		if (ret)
+			return ret;
+		vcpu->arch.tsc_dbg_enabled = 1;
+        } else if (data == 0) {
+		kvm_gpc_deactivate(&vcpu->arch.tdxtsc_debug);
+		vcpu->arch.tsc_dbg_enabled = 0;
+	}
+
+	return 0;
+	/* Otherwise, just let vm-exit/vm-entry processing write the values */
+}
+
 int kvm_set_msr_common(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 {
 	u32 msr = msr_info->index;
@@ -4165,6 +4233,11 @@ int kvm_set_msr_common(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 			return 1;
 
 		vcpu->arch.guest_fpu.xfd_err = data;
+		break;
+	case MSR_KVM_DEBUG_TDXTSC:
+		trace_printk("MSR_KVM_DEBUG_TDXTSC msr write!\n");
+		if (kvm_msr_debug_tdxtsc(vcpu, data))
+			return 1;
 		break;
 #endif
 	default:
@@ -10935,6 +11008,8 @@ static int vcpu_enter_guest(struct kvm_vcpu *vcpu)
 
 	kvm_x86_call(prepare_switch_to_guest)(vcpu);
 
+	tscdata_update(vcpu, false);
+
 	/*
 	 * Disable IRQs before setting IN_GUEST_MODE.  Posted interrupt
 	 * IPI are then delayed after guest entry, which ensures that they
@@ -11106,6 +11181,8 @@ static int vcpu_enter_guest(struct kvm_vcpu *vcpu)
 	 * Exit, so that the evicted WC writes can be snooped across all cpus
 	 */
 	smp_mb__after_srcu_read_lock();
+
+	tscdata_update(vcpu, true);
 
 	/*
 	 * Profile KVM exit RIPs:
@@ -12284,6 +12361,7 @@ int kvm_arch_vcpu_create(struct kvm_vcpu *vcpu)
 	vcpu->arch.regs_dirty = ~0;
 
 	kvm_gpc_init(&vcpu->arch.pv_time, vcpu->kvm);
+	kvm_gpc_init(&vcpu->arch.tdxtsc_debug, vcpu->kvm);
 
 	if (!irqchip_in_kernel(vcpu->kvm) || kvm_vcpu_is_reset_bsp(vcpu))
 		vcpu->arch.mp_state = KVM_MP_STATE_RUNNABLE;

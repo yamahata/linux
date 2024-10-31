@@ -747,6 +747,21 @@ struct kvm_queued_exception {
 	bool has_payload;
 };
 
+struct host_tsc_data {
+	unsigned long long r;
+	unsigned long long o;
+	unsigned long long c;
+};
+
+#define TSC_MAX_ENTRIES 70
+struct shared_tsc_data {
+        struct host_tsc_data vme[TSC_MAX_ENTRIES];
+        struct host_tsc_data vmex[TSC_MAX_ENTRIES];
+        unsigned long long gr[TSC_MAX_ENTRIES];
+        int i;
+        int recording;
+};
+
 struct kvm_vcpu_arch {
 	/*
 	 * rip and regs accesses must go through
@@ -903,6 +918,7 @@ struct kvm_vcpu_arch {
 	struct pvclock_vcpu_time_info hv_clock;
 	unsigned int hw_tsc_khz;
 	struct gfn_to_pfn_cache pv_time;
+	struct gfn_to_pfn_cache tdxtsc_debug;
 	/* set guest stopped flag in pvclock flags field */
 	bool pvclock_set_guest_stopped_request;
 
@@ -1055,7 +1071,10 @@ struct kvm_vcpu_arch {
 #if IS_ENABLED(CONFIG_HYPERV)
 	hpa_t hv_root_tdp;
 #endif
+	int tsc_dbg_enabled;
 };
+
+void tscdata_update(struct kvm_vcpu *vcpu, bool vmexit);
 
 struct kvm_lpage_info {
 	int disallow_lpage;
