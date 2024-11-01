@@ -747,21 +747,6 @@ struct kvm_queued_exception {
 	bool has_payload;
 };
 
-struct host_tsc_data {
-	unsigned long long r;
-	unsigned long long o;
-	unsigned long long c;
-};
-
-#define TSC_MAX_ENTRIES 70
-struct shared_tsc_data {
-        struct host_tsc_data vme[TSC_MAX_ENTRIES];
-        struct host_tsc_data vmex[TSC_MAX_ENTRIES];
-        unsigned long long gr[TSC_MAX_ENTRIES];
-        int i;
-        int recording;
-};
-
 struct kvm_vcpu_arch {
 	/*
 	 * rip and regs accesses must go through

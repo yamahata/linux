@@ -3792,7 +3792,7 @@ static void record_steal_time(struct kvm_vcpu *vcpu)
 
 void tscdata_update(struct kvm_vcpu *vcpu, bool vmexit)
 {
-	struct shared_tsc_data *tscdata;
+	struct kvm_shared_tsc_data *tscdata;
 	unsigned long flags;
 	struct gfn_to_pfn_cache *gpc = &vcpu->arch.tdxtsc_debug;
 
@@ -3820,7 +3820,7 @@ void tscdata_update(struct kvm_vcpu *vcpu, bool vmexit)
 
 	tscdata = (void *)(gpc->khva);
 
-	if (tscdata->i < TSC_MAX_ENTRIES-10)  {
+	if (tscdata->i < KVM_TSC_MAX_ENTRIES-10)  {
 
 		u64 host_tsc = rdtsc_ordered();
 
@@ -3857,7 +3857,7 @@ static int kvm_msr_debug_tdxtsc(struct kvm_vcpu *vcpu, u64 data)
 	/* initialize counters */
 	if (data & 0x1) {
 		ret = kvm_gpc_activate(&vcpu->arch.tdxtsc_debug, data & ~1ULL,
-				 sizeof(struct shared_tsc_data));
+				 sizeof(struct kvm_shared_tsc_data));
 		if (ret)
 			return ret;
 

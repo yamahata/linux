@@ -997,4 +997,19 @@ struct kvm_tdx_init_mem_region {
 	__u64 nr_pages;
 };
 
+struct kvm_host_tsc_data {
+	unsigned long long r;
+	unsigned long long o;
+	unsigned long long c;
+};
+
+#define KVM_TSC_MAX_ENTRIES	70
+struct kvm_shared_tsc_data {
+	struct kvm_host_tsc_data vme[KVM_TSC_MAX_ENTRIES];
+	struct kvm_host_tsc_data vmex[KVM_TSC_MAX_ENTRIES];
+	unsigned long long gr[KVM_TSC_MAX_ENTRIES];
+	int i;
+	int recording;
+};
+
 #endif /* _ASM_X86_KVM_H */

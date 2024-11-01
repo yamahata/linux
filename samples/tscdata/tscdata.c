@@ -14,7 +14,7 @@ static int vcpu = 0;
 module_param(vcpu, int, 0444);
 MODULE_PARM_DESC(vcpu, "vcpu to pin to");
 
-struct shared_tsc_data *tscdata;
+struct kvm_shared_tsc_data *tscdata;
 
 static void print_data(void)
 {
