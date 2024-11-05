@@ -2041,6 +2041,7 @@ bool tdx_has_emulated_msr(u32 index)
 	case MSR_IA32_MC0_CTL2 ... MSR_IA32_MCx_CTL2(KVM_MAX_MCE_BANKS) - 1:
 		/* MSR_IA32_MCx_{CTL, STATUS, ADDR, MISC, CTL2} */
 	case MSR_KVM_POLL_CONTROL:
+	case MSR_KVM_DEBUG_TDXTSC:
 		return true;
 	case APIC_BASE_MSR ... APIC_BASE_MSR + 0xff:
 		/*
