@@ -3798,6 +3798,15 @@ void tscdata_update(struct kvm_vcpu *vcpu, bool vmexit)
 
 	if (!vcpu->arch.tsc_dbg_enabled)
 		return;
+	if (!vmexit) {
+		if (!vcpu->arch.tsc_dbg_record_enter)
+			return;
+		vcpu->arch.tsc_dbg_record_enter = false;
+	} else {
+		if (!vcpu->arch.tsc_dbg_record_exit)
+			return;
+		vcpu->arch.tsc_dbg_record_exit = false;
+	}
 
         read_lock_irqsave(&gpc->lock, flags);
         while (!kvm_gpc_check(gpc, sizeof(*tscdata))) {
@@ -3870,10 +3879,12 @@ static int kvm_msr_debug_tdxtsc(struct kvm_vcpu *vcpu, u64 data)
 		}
 
 		vcpu->arch.tsc_dbg_enabled = 1;
+		vcpu->arch.tsc_dbg_record_enter = true;
         } else if (data == 0) {
 		kvm_gpc_deactivate(&vcpu->arch.tdxtsc_debug);
 		vcpu->arch.tsc_dbg_enabled = 0;
-	}
+	} else
+		vcpu->arch.tsc_dbg_record_enter = true;
 
 	return 0;
 	/* Otherwise, just let vm-exit/vm-entry processing write the values */

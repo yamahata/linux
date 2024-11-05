@@ -1072,6 +1072,8 @@ struct kvm_vcpu_arch {
 	hpa_t hv_root_tdp;
 #endif
 	int tsc_dbg_enabled;
+	bool tsc_dbg_record_enter;
+	bool tsc_dbg_record_exit;
 };
 
 void tscdata_update(struct kvm_vcpu *vcpu, bool vmexit);

@@ -1053,6 +1053,12 @@ void tdx_inject_nmi(struct kvm_vcpu *vcpu)
 
 void tdx_handle_exit_irqoff(struct kvm_vcpu *vcpu)
 {
+	if (tdexit_exit_reason(vcpu).basic == EXIT_REASON_TDCALL &&
+	    tdvmcall_leaf(vcpu) == EXIT_REASON_MSR_WRITE &&
+	    tdvmcall_a0_read(vcpu) == MSR_KVM_DEBUG_TDXTSC &&
+	    vcpu->arch.tsc_dbg_enabled)
+		vcpu->arch.tsc_dbg_record_exit = true;
+
 	if (tdx_check_exit_reason(vcpu, EXIT_REASON_EXTERNAL_INTERRUPT))
 		vmx_handle_external_interrupt_irqoff(vcpu,
 						     tdexit_intr_info(vcpu));
