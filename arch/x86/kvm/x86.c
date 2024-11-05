@@ -3840,6 +3840,9 @@ void tscdata_update(struct kvm_vcpu *vcpu, bool vmexit)
 
 static int kvm_msr_debug_tdxtsc(struct kvm_vcpu *vcpu, u64 data)
 {
+	struct gfn_to_pfn_cache *gpc = &vcpu->arch.tdxtsc_debug;
+	struct kvm_shared_tsc_data *tscdata;
+	unsigned long flags;
 	int ret;
 
 	/* initialize counters */
@@ -3848,6 +3851,24 @@ static int kvm_msr_debug_tdxtsc(struct kvm_vcpu *vcpu, u64 data)
 				 sizeof(struct shared_tsc_data));
 		if (ret)
 			return ret;
+
+		if (!vcpu->arch.tsc_dbg_enabled) {
+			read_lock_irqsave(&gpc->lock, flags);
+			while (!kvm_gpc_check(gpc, sizeof(*tscdata))) {
+				read_unlock_irqrestore(&gpc->lock, flags);
+
+				if (kvm_gpc_refresh(gpc, sizeof(*tscdata)))
+					return -EIO;
+
+				read_lock_irqsave(&gpc->lock, flags);
+			}
+
+			tscdata = (void *)(gpc->khva);
+			memset(tscdata, 0, sizeof(*tscdata));
+			kvm_gpc_mark_dirty_in_slot(gpc);
+			read_unlock_irqrestore(&gpc->lock, flags);
+		}
+
 		vcpu->arch.tsc_dbg_enabled = 1;
         } else if (data == 0) {
 		kvm_gpc_deactivate(&vcpu->arch.tdxtsc_debug);
