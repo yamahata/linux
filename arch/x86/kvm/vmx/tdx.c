@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: GPL-2.0
-#include <linux/local_lock.h>
 #include <linux/cleanup.h>
 #include <linux/cpu.h>
 #include <linux/mmu_context.h>
@@ -164,7 +163,6 @@ static inline int pg_level_to_tdx_sept_level(enum pg_level level)
 
 struct associated_tdvcpus {
 	struct list_head list;
-	local_lock_t lock;
 };
 
 /*
@@ -438,13 +436,14 @@ void tdx_disable_virtualization_cpu(void)
 	struct vcpu_tdx *tdx, *tmp;
 	unsigned long flags;
 
-	local_lock_irqsave(&associated_tdvcpus.lock, flags);
+	lockdep_assert_preemption_disabled();
+	local_irq_save(flags);
 	/* Safe variant needed as tdx_disassociate_vp() deletes the entry. */
 	list_for_each_entry_safe(tdx, tmp, tdvcpus, cpu_list) {
 		arg.vcpu = &tdx->vcpu;
 		tdx_flush_vp(&arg);
 	}
-	local_unlock_irqrestore(&associated_tdvcpus.lock, flags);
+	local_irq_restore(flags);
 }
 
 static void smp_func_do_phymem_cache_wb(void *unused)
@@ -713,6 +712,7 @@ int tdx_vcpu_create(struct kvm_vcpu *vcpu)
 void tdx_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 {
 	struct vcpu_tdx *tdx = to_tdx(vcpu);
+	unsigned long flags;
 
 	vmx_vcpu_pi_load(vcpu, cpu);
 	if (vcpu->cpu == cpu)
@@ -721,7 +721,8 @@ void tdx_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 	tdx_flush_vp_on_cpu(vcpu);
 
 	KVM_BUG_ON(cpu != raw_smp_processor_id(), vcpu->kvm);
-	local_lock_irq(&associated_tdvcpus.lock);
+	lockdep_assert_preemption_disabled();
+	local_irq_save(flags);
 	/*
 	 * Pairs with the smp_wmb() in tdx_disassociate_vp() to ensure
 	 * vcpu->cpu is read before tdx->cpu_list.
@@ -729,7 +730,7 @@ void tdx_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 	smp_rmb();
 
 	list_add(&tdx->cpu_list, this_cpu_ptr(&associated_tdvcpus.list));
-	local_unlock_irq(&associated_tdvcpus.lock);
+	local_irq_restore(flags);
 }
 
 bool tdx_interrupt_allowed(struct kvm_vcpu *vcpu)
@@ -3273,10 +3274,8 @@ static int __init __tdx_bringup(void)
 	}
 
 	/* tdx_disable_virtualization_cpu() uses associated_tdvcpus. */
-	for_each_possible_cpu(i) {
+	for_each_possible_cpu(i)
 		INIT_LIST_HEAD(&per_cpu(associated_tdvcpus.list, i));
-		local_lock_init(&per_cpu(associated_tdvcpus.lock, i));
-	}
 
 	for (i = 0; i < ARRAY_SIZE(tdx_uret_msrs); i++) {
 		/*
