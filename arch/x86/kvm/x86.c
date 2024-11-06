@@ -11004,11 +11004,11 @@ static int vcpu_enter_guest(struct kvm_vcpu *vcpu)
 		goto cancel_injection;
 	}
 
+	tscdata_update(vcpu, false);
+
 	preempt_disable();
 
 	kvm_x86_call(prepare_switch_to_guest)(vcpu);
-
-	tscdata_update(vcpu, false);
 
 	/*
 	 * Disable IRQs before setting IN_GUEST_MODE.  Posted interrupt
